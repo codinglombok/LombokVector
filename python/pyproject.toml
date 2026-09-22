@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "lombokvector"
+version = "0.1.0"
+description = "SIMD-optimized vector math for RAG systems — cosine similarity, dot product, L2 distance. Zero dependencies."
+authors = [{ name = "codinglombok" }]
+license = { text = "Apache-2.0" }
+requires-python = ">=3.9"
+keywords = ["vector", "simd", "cosine-similarity", "rag", "embedding"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: Apache Software License",
+    "Operating System :: OS Independent",
+    "Topic :: Scientific/Engineering :: Mathematics",
+]
+
+[project.urls]
+Repository = "https://github.com/codinglombok/LombokVector"

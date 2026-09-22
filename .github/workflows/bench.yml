@@ -1,0 +1,44 @@
+name: Benchmark
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'rust/src/**'
+      - 'rust/benches/**'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'rust/src/**'
+      - 'rust/benches/**'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  deployments: write
+
+jobs:
+  benchmark:
+    name: Criterion benchmarks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rust -> target
+      - name: Run benchmarks
+        working-directory: rust
+        run: cargo bench --bench bench_ops -- --output-format bencher | tee output.txt
+      - name: Store benchmark result
+        if: github.ref == 'refs/heads/main'
+        uses: benchmark-action/github-action-benchmark@v1
+        with:
+          tool: 'cargo'
+          output-file-path: rust/output.txt
+          gh-pages-branch: gh-pages
+          benchmark-data-dir-path: dev/bench
+          auto-push: true
+          alert-threshold: '150%'
+          comment-on-alert: true
+          fail-on-alert: false

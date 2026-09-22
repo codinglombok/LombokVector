@@ -1,0 +1,155 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  # ── Validate tag ──
+  validate:
+    name: Validate tag
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.ver.outputs.version }}
+    steps:
+      - id: ver
+        run: echo "version=${GITHUB_REF#refs/tags/v}" >> "$GITHUB_OUTPUT"
+
+  # ── Rust → crates.io ──
+  rust-publish:
+    name: Publish to crates.io
+    needs: validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Verify version matches tag
+        working-directory: rust
+        run: |
+          CARGO_VER=$(grep '^version' Cargo.toml | head -1 | sed 's/.*"\(.*\)"/\1/')
+          if [ "$CARGO_VER" != "${{ needs.validate.outputs.version }}" ]; then
+            echo "::error::Cargo.toml version ($CARGO_VER) != tag (${{ needs.validate.outputs.version }})"
+            exit 1
+          fi
+      - name: Test
+        working-directory: rust
+        run: cargo test
+      - name: Publish
+        working-directory: rust
+        run: cargo publish --token ${{ secrets.CRATES_IO_TOKEN }}
+
+  # ── TypeScript → npm + GPR ──
+  ts-publish:
+    name: Publish to npm & GPR
+    needs: validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          registry-url: 'https://registry.npmjs.org'
+      - name: Verify version
+        working-directory: ts
+        run: |
+          PKG_VER=$(node -p "require('./package.json').version")
+          if [ "$PKG_VER" != "${{ needs.validate.outputs.version }}" ]; then
+            echo "::error::package.json version ($PKG_VER) != tag (${{ needs.validate.outputs.version }})"
+            exit 1
+          fi
+      - name: Build & publish to npm
+        working-directory: ts
+        run: |
+          npx tsc
+          npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      - name: Publish to GPR
+        working-directory: ts
+        run: |
+          echo "@codinglombok:registry=https://npm.pkg.github.com" > .npmrc
+          echo "//npm.pkg.github.com/:_authToken=${{ secrets.GITHUB_TOKEN }}" >> .npmrc
+          npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # ── Python → PyPI ──
+  python-publish:
+    name: Publish to PyPI
+    needs: validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Build
+        working-directory: python
+        run: |
+          pip install build
+          python -m build
+      - name: Publish
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: python/dist/
+          password: ${{ secrets.PYPI_TOKEN }}
+
+  # ── PHP → Packagist (auto via webhook) ──
+  php-validate:
+    name: Validate PHP package
+    needs: validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          tools: composer:v2
+      - name: Validate composer.json
+        working-directory: php
+        run: composer validate --strict
+      - name: Install & test
+        working-directory: php
+        run: |
+          composer install --no-interaction --prefer-dist
+          vendor/bin/phpunit
+
+  # ── Go (auto via proxy.golang.org tag detection) ──
+  go-validate:
+    name: Validate Go module
+    needs: validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+      - name: Test
+        working-directory: go
+        run: go test -v -race ./...
+
+  # ── GitHub Release ──
+  github-release:
+    name: Create GitHub Release
+    needs: [validate, rust-publish, ts-publish, python-publish, php-validate, go-validate]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          body: |
+            ## Install
+
+            | Language | Command |
+            |----------|---------|
+            | Rust | `cargo add lombokvector` |
+            | TypeScript | `npm install lombokvector` |
+            | Python | `pip install lombokvector` |
+            | Go | `go get github.com/codinglombok/lombokvector@v${{ needs.validate.outputs.version }}` |
+            | PHP | `composer require codinglombok/lombokvector` |

@@ -1,0 +1,157 @@
+{
+  "version": "1.0.0",
+  "description": "LombokVector shared test vectors — all language ports must produce identical results",
+  "tolerance": {
+    "f32": 1e-6,
+    "f64": 1e-14
+  },
+  "cosine": [
+    {
+      "id": "cos_basic",
+      "a": [1.0, 2.0, 3.0],
+      "b": [4.0, 5.0, 6.0],
+      "expected_f32": 0.9746318,
+      "expected_f64": 0.9746318461970762
+    },
+    {
+      "id": "cos_identical",
+      "a": [1.0, 0.0, 0.0],
+      "b": [1.0, 0.0, 0.0],
+      "expected_f32": 1.0,
+      "expected_f64": 1.0
+    },
+    {
+      "id": "cos_orthogonal",
+      "a": [1.0, 0.0, 0.0],
+      "b": [0.0, 1.0, 0.0],
+      "expected_f32": 0.0,
+      "expected_f64": 0.0
+    },
+    {
+      "id": "cos_opposite",
+      "a": [1.0, 2.0, 3.0],
+      "b": [-1.0, -2.0, -3.0],
+      "expected_f32": -1.0,
+      "expected_f64": -1.0
+    },
+    {
+      "id": "cos_768d",
+      "description": "Typical embedding dimension (768). Values are deterministic: a[i] = sin(i*0.1), b[i] = cos(i*0.1).",
+      "generator": "a[i] = sin(i * 0.1), b[i] = cos(i * 0.1), i = 0..767",
+      "expected_f64": 0.012394344943011405
+    },
+    {
+      "id": "cos_negative_mixed",
+      "a": [-0.5, 0.3, -0.8, 0.1],
+      "b": [0.2, -0.7, 0.4, 0.9],
+      "expected_f64": -0.4431293675255979
+    }
+  ],
+  "dot": [
+    {
+      "id": "dot_basic",
+      "a": [1.0, 2.0, 3.0],
+      "b": [4.0, 5.0, 6.0],
+      "expected_f32": 32.0,
+      "expected_f64": 32.0
+    },
+    {
+      "id": "dot_zeros",
+      "a": [0.0, 0.0, 0.0],
+      "b": [1.0, 2.0, 3.0],
+      "expected_f32": 0.0,
+      "expected_f64": 0.0
+    },
+    {
+      "id": "dot_negative",
+      "a": [1.0, -2.0, 3.0],
+      "b": [-4.0, 5.0, -6.0],
+      "expected_f32": -32.0,
+      "expected_f64": -32.0
+    },
+    {
+      "id": "dot_single",
+      "a": [7.0],
+      "b": [3.0],
+      "expected_f32": 21.0,
+      "expected_f64": 21.0
+    }
+  ],
+  "l2": [
+    {
+      "id": "l2_basic",
+      "a": [1.0, 2.0, 3.0],
+      "b": [4.0, 5.0, 6.0],
+      "expected_f32": 5.196152,
+      "expected_f64": 5.196152422706632
+    },
+    {
+      "id": "l2_identical",
+      "a": [1.0, 2.0, 3.0],
+      "b": [1.0, 2.0, 3.0],
+      "expected_f32": 0.0,
+      "expected_f64": 0.0
+    },
+    {
+      "id": "l2_unit_axes",
+      "a": [1.0, 0.0, 0.0],
+      "b": [0.0, 1.0, 0.0],
+      "expected_f32": 1.4142135,
+      "expected_f64": 1.4142135623730951
+    }
+  ],
+  "normalize": [
+    {
+      "id": "norm_basic",
+      "input": [3.0, 4.0],
+      "expected_f32": [0.6, 0.8],
+      "expected_f64": [0.6, 0.8]
+    },
+    {
+      "id": "norm_3d",
+      "input": [1.0, 2.0, 3.0],
+      "expected_f64": [0.2672612419124244, 0.5345224838248488, 0.8017837257372732]
+    },
+    {
+      "id": "norm_already_unit",
+      "input": [1.0, 0.0, 0.0],
+      "expected_f64": [1.0, 0.0, 0.0]
+    }
+  ],
+  "l2_norm": [
+    {
+      "id": "l2norm_basic",
+      "input": [3.0, 4.0],
+      "expected_f32": 5.0,
+      "expected_f64": 5.0
+    },
+    {
+      "id": "l2norm_3d",
+      "input": [1.0, 2.0, 3.0],
+      "expected_f64": 3.7416573867739413
+    }
+  ],
+  "arithmetic": [
+    {
+      "id": "add_basic",
+      "op": "add",
+      "a": [1.0, 2.0, 3.0],
+      "b": [4.0, 5.0, 6.0],
+      "expected": [5.0, 7.0, 9.0]
+    },
+    {
+      "id": "sub_basic",
+      "op": "sub",
+      "a": [4.0, 5.0, 6.0],
+      "b": [1.0, 2.0, 3.0],
+      "expected": [3.0, 3.0, 3.0]
+    },
+    {
+      "id": "mul_scalar",
+      "op": "mul_scalar",
+      "a": [1.0, 2.0, 3.0],
+      "scalar": 2.5,
+      "expected": [2.5, 5.0, 7.5]
+    }
+  ]
+}

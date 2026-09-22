@@ -1,0 +1,145 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ── Rust ──
+  rust:
+    name: Rust (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rust -> target
+      - name: Format check
+        working-directory: rust
+        run: cargo fmt --check
+      - name: Clippy
+        working-directory: rust
+        run: cargo clippy --all-features -- -D warnings
+      - name: Test (default features)
+        working-directory: rust
+        run: cargo test
+      - name: Test (portable only)
+        working-directory: rust
+        run: cargo test --no-default-features --features portable
+      - name: Test (no_std + portable)
+        working-directory: rust
+        run: cargo test --no-default-features --features portable
+
+  rust-no-std:
+    name: Rust no_std check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: thumbv7em-none-eabihf
+      - name: Check no_std build
+        working-directory: rust
+        run: cargo check --no-default-features --features portable --target thumbv7em-none-eabihf
+
+  rust-wasm:
+    name: Rust WASM
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - name: Check WASM build
+        working-directory: rust
+        run: cargo check --no-default-features --features "wasm-simd" --target wasm32-unknown-unknown
+
+  # ── TypeScript ──
+  typescript:
+    name: TypeScript (Node ${{ matrix.node }})
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node: ['18', '20', '22']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+      - name: Install
+        working-directory: ts
+        run: npm install
+      - name: Type check
+        working-directory: ts
+        run: npx tsc --noEmit
+      - name: Test
+        working-directory: ts
+        run: node --test src/test.ts || node --import tsx --test src/test.ts
+
+  # ── Python ──
+  python:
+    name: Python ${{ matrix.python }}
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python: ['3.9', '3.10', '3.11', '3.12', '3.13']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Test
+        working-directory: python
+        run: python -m unittest test_lombokvector -v
+
+  # ── Go ──
+  go:
+    name: Go ${{ matrix.go }}
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        go: ['1.21', '1.22', '1.23']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ matrix.go }}
+      - name: Test
+        working-directory: go
+        run: go test -v -race ./...
+      - name: Vet
+        working-directory: go
+        run: go vet ./...
+
+  # ── PHP ──
+  php:
+    name: PHP ${{ matrix.php }}
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        php: ['8.1', '8.2', '8.3', '8.4']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          tools: composer:v2
+      - name: Install
+        working-directory: php
+        run: composer install --no-interaction --prefer-dist
+      - name: Test
+        working-directory: php
+        run: vendor/bin/phpunit --colors=always

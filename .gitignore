@@ -1,0 +1,44 @@
+# Rust
+rust/target/
+**/*.rs.bk
+
+# TypeScript / Node
+ts/node_modules/
+ts/dist/
+ts/*.tgz
+
+# Python
+python/__pycache__/
+python/**/__pycache__/
+python/*.egg-info/
+python/dist/
+python/build/
+python/.pytest_cache/
+*.pyc
+*.pyo
+
+# Go
+go/bin/
+
+# PHP
+php/vendor/
+php/.phpunit.result.cache
+php/.phpunit.cache/
+
+# C
+c-headers/*.o
+c-headers/*.so
+c-headers/*.dylib
+c-headers/*.dll
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Build artifacts
+*.zip
