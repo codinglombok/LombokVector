@@ -1,227 +1,245 @@
-"""
-LombokVector — Pure Python vector math for RAG systems.
-Zero dependencies. Part of LombokRAGFrameworks (@codinglombok).
-License: Apache-2.0
-"""
+"""LombokVector for Python: binary64 vector math whose results are
+bit-identical to the Rust, TypeScript, Go and PHP ports. Every sum uses the
+8-lane order of docs/SPEC_LombokVector_v0.2.0.md section 2. Pure Python,
+no dependencies."""
 
 from __future__ import annotations
 
 import math
-from typing import List, Sequence, Tuple
+from typing import List, NamedTuple, Sequence
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 __all__ = [
+    "ScoredIndex",
     "VectorError",
+    "batch_cosine",
+    "batch_dot",
+    "batch_l2",
     "cosine_similarity",
+    "distance_matrix_cosine",
     "dot_product",
-    "l2_distance",
     "inner_product",
+    "l2_distance",
     "l2_norm",
     "normalize",
     "vec_add",
-    "vec_sub",
     "vec_mul_scalar",
-    "batch_cosine",
-    "batch_l2",
-    "distance_matrix_cosine",
+    "vec_sub",
 ]
 
+Vector = Sequence[float]
 
-class VectorError(Exception):
-    """Raised on invalid vector operations."""
+
+class VectorError(ValueError):
+    """Raised by every operation; ``code`` is stable across ports:
+    ``DIMENSION_MISMATCH``, ``EMPTY_VECTOR``, ``ZERO_MAGNITUDE``, ``NON_FINITE``."""
 
     def __init__(self, code: str, message: str) -> None:
-        super().__init__(message)
+        super().__init__(f"{code}: {message}")
         self.code = code
 
 
-def _check_pair(a: Sequence[float], b: Sequence[float]) -> None:
+class ScoredIndex(NamedTuple):
+    """A candidate's position in the input and its score."""
+
+    index: int
+    score: float
+
+
+def _check_pair(a: Vector, b: Vector) -> None:
     if len(a) == 0:
-        raise VectorError("EMPTY_VECTOR", "empty vector")
+        raise VectorError("EMPTY_VECTOR", "vector has no elements")
     if len(a) != len(b):
-        raise VectorError(
-            "DIMENSION_MISMATCH",
-            f"dimension mismatch: expected {len(a)}, got {len(b)}",
-        )
+        raise VectorError("DIMENSION_MISMATCH", f"expected {len(a)} elements, got {len(b)}")
 
 
-def _check_single(a: Sequence[float]) -> None:
+def _check_single(a: Vector) -> None:
     if len(a) == 0:
-        raise VectorError("EMPTY_VECTOR", "empty vector")
+        raise VectorError("EMPTY_VECTOR", "vector has no elements")
 
 
-# ── Core kernels (4× unrolled) ──
+def _finite(x: float) -> float:
+    if not math.isfinite(x):
+        raise VectorError("NON_FINITE", "result is infinite or NaN")
+    return x
 
 
-def _dot(a: Sequence[float], b: Sequence[float]) -> float:
-    n = len(a)
-    chunks = n & ~3
-    s = 0.0
-    i = 0
-    while i < chunks:
-        s += a[i] * b[i] + a[i + 1] * b[i + 1] + a[i + 2] * b[i + 2] + a[i + 3] * b[i + 3]
-        i += 4
-    while i < n:
-        s += a[i] * b[i]
-        i += 1
-    return s
+# --- SPEC section 2: the 8-lane reduction ------------------------------------
 
 
-def _sum_sq(a: Sequence[float]) -> float:
-    n = len(a)
-    chunks = n & ~3
-    s = 0.0
-    i = 0
-    while i < chunks:
-        s += a[i] * a[i] + a[i + 1] * a[i + 1] + a[i + 2] * a[i + 2] + a[i + 3] * a[i + 3]
-        i += 4
-    while i < n:
-        s += a[i] * a[i]
-        i += 1
-    return s
+def _combine(s: List[float]) -> float:
+    return ((s[0] + s[1]) + (s[2] + s[3])) + ((s[4] + s[5]) + (s[6] + s[7]))
 
 
-def _l2_sq(a: Sequence[float], b: Sequence[float]) -> float:
-    n = len(a)
-    chunks = n & ~3
-    s = 0.0
-    i = 0
-    while i < chunks:
-        d0 = a[i] - b[i]
-        d1 = a[i + 1] - b[i + 1]
-        d2 = a[i + 2] - b[i + 2]
-        d3 = a[i + 3] - b[i + 3]
-        s += d0 * d0 + d1 * d1 + d2 * d2 + d3 * d3
-        i += 4
-    while i < n:
-        d = a[i] - b[i]
-        s += d * d
-        i += 1
-    return s
+def _dot(a: Vector, b: Vector) -> float:
+    s = [0.0] * 8
+    for i in range(len(a)):
+        s[i & 7] += float(a[i]) * float(b[i])
+    return _combine(s)
 
 
-# ── Public API ──
+def _sumsq(a: Vector) -> float:
+    s = [0.0] * 8
+    for i in range(len(a)):
+        x = float(a[i])
+        s[i & 7] += x * x
+    return _combine(s)
 
 
-def cosine_similarity(a: Sequence[float], b: Sequence[float]) -> float:
-    """Cosine similarity in [-1, 1]."""
-    _check_pair(a, b)
-    dot = _dot(a, b)
-    na = math.sqrt(_sum_sq(a))
-    nb = math.sqrt(_sum_sq(b))
-    if na == 0 or nb == 0:
-        raise VectorError("ZERO_MAGNITUDE", "zero magnitude vector")
-    return dot / (na * nb)
+def _l2sq(a: Vector, b: Vector) -> float:
+    s = [0.0] * 8
+    for i in range(len(a)):
+        d = float(a[i]) - float(b[i])
+        s[i & 7] += d * d
+    return _combine(s)
 
 
-def dot_product(a: Sequence[float], b: Sequence[float]) -> float:
+def _sqrt(x: float) -> float:
+    # x is a finite sum of squares, so it is never negative
+    return _finite(math.sqrt(x))
+
+
+def _div(x: float, y: float) -> float:
+    if y == 0.0:  # IEEE 754 gives an infinity or NaN; Python raises instead
+        raise VectorError("NON_FINITE", "result is infinite or NaN")
+    return _finite(x / y)
+
+
+def _cos(d: float, na: float, nb: float) -> float:
+    c = _div(d, na * nb)
+    return -1.0 if c < -1.0 else 1.0 if c > 1.0 else c
+
+
+# --- SPEC section 3: operations ----------------------------------------------
+
+
+def dot_product(a: Vector, b: Vector) -> float:
     """Dot product."""
     _check_pair(a, b)
-    return _dot(a, b)
+    return _finite(_dot(a, b))
 
 
-def l2_distance(a: Sequence[float], b: Sequence[float]) -> float:
-    """Euclidean (L2) distance."""
-    _check_pair(a, b)
-    return math.sqrt(_l2_sq(a, b))
-
-
-def inner_product(a: Sequence[float], b: Sequence[float]) -> float:
-    """Inner product (alias for dot product)."""
+def inner_product(a: Vector, b: Vector) -> float:
+    """Same as :func:`dot_product` for real vectors."""
     return dot_product(a, b)
 
 
-def l2_norm(a: Sequence[float]) -> float:
-    """L2 norm (magnitude)."""
+def l2_norm(a: Vector) -> float:
+    """Euclidean norm."""
     _check_single(a)
-    return math.sqrt(_sum_sq(a))
+    return _sqrt(_finite(_sumsq(a)))
 
 
-def normalize(a: Sequence[float]) -> List[float]:
-    """Normalize to unit length."""
-    _check_single(a)
-    norm = math.sqrt(_sum_sq(a))
-    if norm == 0:
-        raise VectorError("ZERO_MAGNITUDE", "zero magnitude vector")
-    inv = 1.0 / norm
-    return [x * inv for x in a]
-
-
-def vec_add(a: Sequence[float], b: Sequence[float]) -> List[float]:
-    """Element-wise addition."""
+def l2_distance(a: Vector, b: Vector) -> float:
+    """Euclidean distance."""
     _check_pair(a, b)
-    return [x + y for x, y in zip(a, b)]
+    return _sqrt(_finite(_l2sq(a, b)))
 
 
-def vec_sub(a: Sequence[float], b: Sequence[float]) -> List[float]:
-    """Element-wise subtraction."""
+def cosine_similarity(a: Vector, b: Vector) -> float:
+    """Cosine similarity clamped to [-1, 1]; ``ZERO_MAGNITUDE`` when either norm is 0."""
     _check_pair(a, b)
-    return [x - y for x, y in zip(a, b)]
+    d = _finite(_dot(a, b))
+    na = _sqrt(_finite(_sumsq(a)))
+    nb = _sqrt(_finite(_sumsq(b)))
+    if na == 0.0 or nb == 0.0:
+        raise VectorError("ZERO_MAGNITUDE", "vector has magnitude zero")
+    return _cos(d, na, nb)
 
 
-def vec_mul_scalar(a: Sequence[float], s: float) -> List[float]:
-    """Scalar multiplication."""
+def normalize(a: Vector) -> List[float]:
+    """Unit-length copy: ``a[i] * (1 / norm)``."""
     _check_single(a)
-    return [x * s for x in a]
+    n = _sqrt(_finite(_sumsq(a)))
+    if n == 0.0:
+        raise VectorError("ZERO_MAGNITUDE", "vector has magnitude zero")
+    inv = _div(1.0, n)
+    return [_finite(float(x) * inv) for x in a]
 
 
-# ── Batch operations ──
+def vec_add(a: Vector, b: Vector) -> List[float]:
+    """Element-wise sum."""
+    _check_pair(a, b)
+    return [_finite(float(x) + float(y)) for x, y in zip(a, b)]
 
 
-def batch_cosine(
-    query: Sequence[float], candidates: Sequence[Sequence[float]]
-) -> List[Tuple[int, float]]:
-    """Query vs N candidates, sorted descending by cosine similarity."""
+def vec_sub(a: Vector, b: Vector) -> List[float]:
+    """Element-wise difference."""
+    _check_pair(a, b)
+    return [_finite(float(x) - float(y)) for x, y in zip(a, b)]
+
+
+def vec_mul_scalar(a: Vector, s: float) -> List[float]:
+    """Every element multiplied by ``s``."""
+    _check_single(a)
+    s = float(s)
+    return [_finite(float(x) * s) for x in a]
+
+
+# --- batch and matrix ----------------------------------------------------------
+
+
+def _rank(scores: List[float], descending: bool) -> List[ScoredIndex]:
+    # sorted() is stable, so equal scores keep index order
+    order = sorted(range(len(scores)), key=(lambda i: -scores[i]) if descending else (lambda i: scores[i]))
+    return [ScoredIndex(i, scores[i]) for i in order]
+
+
+def _check_candidate(query: Vector, c: Vector) -> None:
+    if len(c) != len(query):
+        raise VectorError("DIMENSION_MISMATCH", f"expected {len(query)} elements, got {len(c)}")
+
+
+def batch_cosine(query: Vector, candidates: Sequence[Vector]) -> List[ScoredIndex]:
+    """Cosine similarity of ``query`` with each candidate, descending; a zero candidate scores 0."""
     _check_single(query)
-    qn = math.sqrt(_sum_sq(query))
-    if qn == 0:
-        raise VectorError("ZERO_MAGNITUDE", "zero magnitude query")
-    results: List[Tuple[int, float]] = []
-    for i, c in enumerate(candidates):
-        if len(c) != len(query):
-            raise VectorError(
-                "DIMENSION_MISMATCH",
-                f"candidate {i}: expected {len(query)}, got {len(c)}",
-            )
-        dot = _dot(query, c)
-        cn = math.sqrt(_sum_sq(c))
-        score = dot / (qn * cn) if cn != 0 else 0.0
-        results.append((i, score))
-    results.sort(key=lambda x: -x[1])
-    return results
+    qn = _sqrt(_finite(_sumsq(query)))
+    if qn == 0.0:
+        raise VectorError("ZERO_MAGNITUDE", "query has magnitude zero")
+    scores = []
+    for c in candidates:
+        _check_candidate(query, c)
+        d = _finite(_dot(query, c))
+        cn = _sqrt(_finite(_sumsq(c)))
+        scores.append(0.0 if cn == 0.0 else _cos(d, qn, cn))
+    return _rank(scores, True)
 
 
-def batch_l2(
-    query: Sequence[float], candidates: Sequence[Sequence[float]]
-) -> List[Tuple[int, float]]:
-    """Query vs N candidates, sorted ascending by L2 distance."""
+def batch_dot(query: Vector, candidates: Sequence[Vector]) -> List[ScoredIndex]:
+    """Dot product of ``query`` with each candidate, descending."""
     _check_single(query)
-    results: List[Tuple[int, float]] = []
-    for i, c in enumerate(candidates):
-        if len(c) != len(query):
-            raise VectorError(
-                "DIMENSION_MISMATCH",
-                f"candidate {i}: expected {len(query)}, got {len(c)}",
-            )
-        results.append((i, math.sqrt(_l2_sq(query, c))))
-    results.sort(key=lambda x: x[1])
-    return results
+    scores = []
+    for c in candidates:
+        _check_candidate(query, c)
+        scores.append(_finite(_dot(query, c)))
+    return _rank(scores, True)
 
 
-def distance_matrix_cosine(
-    vectors_a: Sequence[Sequence[float]],
-    vectors_b: Sequence[Sequence[float]],
-) -> List[List[float]]:
-    """N×M cosine similarity matrix."""
-    if not vectors_a or not vectors_b:
-        raise VectorError("EMPTY_VECTOR", "empty vector set")
-    norms_a = [math.sqrt(_sum_sq(v)) for v in vectors_a]
-    norms_b = [math.sqrt(_sum_sq(v)) for v in vectors_b]
-    matrix: List[List[float]] = []
-    for i, va in enumerate(vectors_a):
-        row: List[float] = []
-        for j, vb in enumerate(vectors_b):
-            denom = norms_a[i] * norms_b[j]
-            row.append(_dot(va, vb) / denom if denom != 0 else 0.0)
-        matrix.append(row)
-    return matrix
+def batch_l2(query: Vector, candidates: Sequence[Vector]) -> List[ScoredIndex]:
+    """Euclidean distance from ``query`` to each candidate, ascending."""
+    _check_single(query)
+    scores = []
+    for c in candidates:
+        _check_candidate(query, c)
+        scores.append(_sqrt(_finite(_l2sq(query, c))))
+    return _rank(scores, False)
+
+
+def distance_matrix_cosine(a: Sequence[Vector], b: Sequence[Vector]) -> List[List[float]]:
+    """``out[i][j]`` = cosine similarity of ``a[i]`` and ``b[j]``; 0 when either has magnitude zero."""
+    if len(a) == 0 or len(b) == 0:
+        raise VectorError("EMPTY_VECTOR", "vector set is empty")
+    first = a[0]
+    _check_single(first)
+    for v in list(a) + list(b):
+        _check_candidate(first, v)
+    na = [_sqrt(_finite(_sumsq(v))) for v in a]
+    nb = [_sqrt(_finite(_sumsq(v))) for v in b]
+    out = []
+    for i, va in enumerate(a):
+        row = []
+        for j, vb in enumerate(b):
+            d = _finite(_dot(va, vb))
+            row.append(0.0 if na[i] == 0.0 or nb[j] == 0.0 else _cos(d, na[i], nb[j]))
+        out.append(row)
+    return out

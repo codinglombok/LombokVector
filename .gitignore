@@ -3,9 +3,9 @@ rust/target/
 **/*.rs.bk
 
 # TypeScript / Node
-ts/node_modules/
-ts/dist/
-ts/*.tgz
+typescript/node_modules/
+typescript/dist/
+typescript/*.tgz
 
 # Python
 python/__pycache__/
@@ -42,3 +42,15 @@ Thumbs.db
 
 # Build artifacts
 *.zip
+
+# Dokumen internal (ADR-024)
+/map
+/docs/*architecture*.*
+/docs/*masterplan*.*
+
+# Build
+typescript/node_modules/
+typescript/dist/
+typescript/build/
+.coverage
+rust/Cargo.lock

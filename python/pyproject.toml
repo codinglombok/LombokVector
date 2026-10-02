@@ -1,21 +1,34 @@
 [build-system]
-requires = ["setuptools>=68.0"]
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "lombokvector"
-version = "0.1.0"
-description = "SIMD-optimized vector math for RAG systems — cosine similarity, dot product, L2 distance. Zero dependencies."
+version = "0.2.0"
+description = "Vector math with bit-identical results across Python, Rust, TypeScript, Go and PHP: dot product, cosine similarity, L2 distance, normalization, batch ranking. Pure Python, zero dependencies."
+readme = "README.md"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
 authors = [{ name = "codinglombok" }]
-license = { text = "Apache-2.0" }
 requires-python = ">=3.9"
-keywords = ["vector", "simd", "cosine-similarity", "rag", "embedding"]
+keywords = ["vector", "cosine-similarity", "embedding", "deterministic"]
 classifiers = [
     "Programming Language :: Python :: 3",
-    "License :: OSI Approved :: Apache Software License",
     "Operating System :: OS Independent",
     "Topic :: Scientific/Engineering :: Mathematics",
+    "Typing :: Typed",
 ]
+dependencies = []
 
 [project.urls]
-Repository = "https://github.com/codinglombok/LombokVector"
+Homepage = "https://github.com/codinglombok/LombokVector"
+Issues = "https://github.com/codinglombok/LombokVector/issues"
+
+[tool.setuptools]
+packages = ["lombokvector"]
+
+[tool.setuptools.package-data]
+lombokvector = ["py.typed"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

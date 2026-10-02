@@ -1,89 +1,81 @@
-// LombokVector — ARM NEON SIMD backend (aarch64, 128-bit, 4×f32)
-// License: Apache-2.0
+//! NEON kernels (aarch64): two 128-bit registers hold lanes 0-3 and 4-7.
+//! `vmulq_f32` and `vaddq_f32` round separately (never `vfmaq_f32`).
 
-#[cfg(target_arch = "aarch64")]
 use core::arch::aarch64::*;
 
-/// NEON dot product (f32). Processes 4 floats per iteration.
-///
+use super::{tail_into, Kind};
+use crate::kernels::{combine_f32, LANES};
+
+#[inline]
+#[target_feature(enable = "neon")]
+unsafe fn run(a: &[f32], b: &[f32], kind: Kind) -> f32 {
+    let n = a.len() - a.len() % LANES;
+    let mut lo = vdupq_n_f32(0.0);
+    let mut hi = vdupq_n_f32(0.0);
+    let mut i = 0;
+    while i < n {
+        // SAFETY: i + 8 <= n <= a.len() and b.len() >= a.len() (checked by callers).
+        let (a0, a1) = unsafe {
+            (
+                vld1q_f32(a.as_ptr().add(i)),
+                vld1q_f32(a.as_ptr().add(i + 4)),
+            )
+        };
+        let (p0, p1) = match kind {
+            Kind::Dot => {
+                let (b0, b1) = unsafe {
+                    (
+                        vld1q_f32(b.as_ptr().add(i)),
+                        vld1q_f32(b.as_ptr().add(i + 4)),
+                    )
+                };
+                (vmulq_f32(a0, b0), vmulq_f32(a1, b1))
+            }
+            Kind::SumSq => (vmulq_f32(a0, a0), vmulq_f32(a1, a1)),
+            Kind::L2Sq => {
+                let (b0, b1) = unsafe {
+                    (
+                        vld1q_f32(b.as_ptr().add(i)),
+                        vld1q_f32(b.as_ptr().add(i + 4)),
+                    )
+                };
+                let (d0, d1) = (vsubq_f32(a0, b0), vsubq_f32(a1, b1));
+                (vmulq_f32(d0, d0), vmulq_f32(d1, d1))
+            }
+        };
+        lo = vaddq_f32(lo, p0);
+        hi = vaddq_f32(hi, p1);
+        i += LANES;
+    }
+    let mut s = [0.0f32; LANES];
+    // SAFETY: s has room for eight f32 values.
+    unsafe {
+        vst1q_f32(s.as_mut_ptr(), lo);
+        vst1q_f32(s.as_mut_ptr().add(4), hi);
+    }
+    let rb = if matches!(kind, Kind::SumSq) {
+        &a[n..]
+    } else {
+        &b[n..a.len()]
+    };
+    tail_into(&mut s, &a[n..], rb, kind);
+    combine_f32(&s)
+}
+
 /// # Safety
-/// Caller must be on aarch64 (NEON is always available on aarch64).
-#[cfg(target_arch = "aarch64")]
-#[inline]
-pub unsafe fn dot_f32(a: &[f32], b: &[f32]) -> f32 {
-    let len = a.len();
-    let chunks = len / 4;
-    let remainder = len % 4;
-
-    let mut acc = vdupq_n_f32(0.0);
-    let a_ptr = a.as_ptr();
-    let b_ptr = b.as_ptr();
-
-    for i in 0..chunks {
-        let offset = i * 4;
-        let va = vld1q_f32(a_ptr.add(offset));
-        let vb = vld1q_f32(b_ptr.add(offset));
-        acc = vfmaq_f32(acc, va, vb);
-    }
-
-    let mut sum = vaddvq_f32(acc);
-    let base = chunks * 4;
-    for j in 0..remainder {
-        sum += a[base + j] * b[base + j];
-    }
-    sum
+/// `b.len() >= a.len()`. NEON is always present on aarch64.
+pub(crate) unsafe fn dot_f32(a: &[f32], b: &[f32]) -> f32 {
+    unsafe { run(a, b, Kind::Dot) }
 }
 
-/// NEON sum of squares (f32).
-#[cfg(target_arch = "aarch64")]
-#[inline]
-pub unsafe fn sum_squares_f32(a: &[f32]) -> f32 {
-    let len = a.len();
-    let chunks = len / 4;
-    let remainder = len % 4;
-
-    let mut acc = vdupq_n_f32(0.0);
-    let a_ptr = a.as_ptr();
-
-    for i in 0..chunks {
-        let offset = i * 4;
-        let va = vld1q_f32(a_ptr.add(offset));
-        acc = vfmaq_f32(acc, va, va);
-    }
-
-    let mut sum = vaddvq_f32(acc);
-    let base = chunks * 4;
-    for j in 0..remainder {
-        sum += a[base + j] * a[base + j];
-    }
-    sum
+/// # Safety
+/// NEON is always present on aarch64.
+pub(crate) unsafe fn sumsq_f32(a: &[f32]) -> f32 {
+    unsafe { run(a, a, Kind::SumSq) }
 }
 
-/// NEON L2 squared distance (f32).
-#[cfg(target_arch = "aarch64")]
-#[inline]
-pub unsafe fn l2_sq_f32(a: &[f32], b: &[f32]) -> f32 {
-    let len = a.len();
-    let chunks = len / 4;
-    let remainder = len % 4;
-
-    let mut acc = vdupq_n_f32(0.0);
-    let a_ptr = a.as_ptr();
-    let b_ptr = b.as_ptr();
-
-    for i in 0..chunks {
-        let offset = i * 4;
-        let va = vld1q_f32(a_ptr.add(offset));
-        let vb = vld1q_f32(b_ptr.add(offset));
-        let diff = vsubq_f32(va, vb);
-        acc = vfmaq_f32(acc, diff, diff);
-    }
-
-    let mut sum = vaddvq_f32(acc);
-    let base = chunks * 4;
-    for j in 0..remainder {
-        let d = a[base + j] - b[base + j];
-        sum += d * d;
-    }
-    sum
+/// # Safety
+/// `b.len() >= a.len()`. NEON is always present on aarch64.
+pub(crate) unsafe fn l2sq_f32(a: &[f32], b: &[f32]) -> f32 {
+    unsafe { run(a, b, Kind::L2Sq) }
 }

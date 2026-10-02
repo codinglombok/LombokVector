@@ -1,3 +1,3 @@
-module github.com/codinglombok/lombokvector
+module github.com/codinglombok/lombokvector/go
 
-go 1.21
+go 1.22

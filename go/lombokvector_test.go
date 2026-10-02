@@ -1,265 +1,185 @@
 package lombokvector
 
 import (
+	"errors"
 	"math"
 	"testing"
 )
 
-const tol = 1e-14
+func must[T any](v T, err error) T {
+	if err != nil {
+		panic(err)
+	}
+	return v
+}
 
-func assertClose(t *testing.T, name string, got, want, eps float64) {
+func wantErr(t *testing.T, err, target error) {
 	t.Helper()
-	if math.Abs(got-want) > eps {
-		t.Errorf("%s: got %v, want %v (diff %v)", name, got, want, math.Abs(got-want))
+	if !errors.Is(err, target) {
+		t.Fatalf("got %v, want %v", err, target)
 	}
 }
 
-// ── Cosine similarity ──
-
-func TestCosineBasic(t *testing.T) {
-	r, err := CosineSimilarity([]float64{1, 2, 3}, []float64{4, 5, 6})
-	if err != nil {
-		t.Fatal(err)
+func TestFloat64API(t *testing.T) {
+	if must(DotProduct([]float64{1, 2, 3}, []float64{4, 5, 6})) != 32 {
+		t.Fatal("dot")
 	}
-	assertClose(t, "cos_basic", r, 0.9746318461970762, tol)
-}
-
-func TestCosineIdentical(t *testing.T) {
-	r, err := CosineSimilarity([]float64{1, 0, 0}, []float64{1, 0, 0})
-	if err != nil {
-		t.Fatal(err)
+	if must(InnerProduct([]float64{1, 2}, []float64{3, 4})) != 11 {
+		t.Fatal("inner")
 	}
-	assertClose(t, "cos_identical", r, 1.0, tol)
-}
-
-func TestCosineOrthogonal(t *testing.T) {
-	r, err := CosineSimilarity([]float64{1, 0, 0}, []float64{0, 1, 0})
-	if err != nil {
-		t.Fatal(err)
+	if must(L2Norm([]float64{3, 4})) != 5 {
+		t.Fatal("norm")
 	}
-	assertClose(t, "cos_orthogonal", r, 0.0, tol)
-}
-
-func TestCosineOpposite(t *testing.T) {
-	r, err := CosineSimilarity([]float64{1, 2, 3}, []float64{-1, -2, -3})
-	if err != nil {
-		t.Fatal(err)
+	if must(L2Distance([]float64{1, 2, 3}, []float64{4, 5, 6})) != math.Sqrt(27) {
+		t.Fatal("l2")
 	}
-	assertClose(t, "cos_opposite", r, -1.0, tol)
-}
-
-func TestCosineNegativeMixed(t *testing.T) {
-	r, err := CosineSimilarity([]float64{-0.5, 0.3, -0.8, 0.1}, []float64{0.2, -0.7, 0.4, 0.9})
-	if err != nil {
-		t.Fatal(err)
+	if must(CosineSimilarity([]float64{1, 0}, []float64{0, 1})) != 0 {
+		t.Fatal("cosine")
 	}
-	assertClose(t, "cos_negative_mixed", r, -0.4431293675255979, tol)
-}
-
-func TestCosine768d(t *testing.T) {
-	a := make([]float64, 768)
-	b := make([]float64, 768)
-	for i := 0; i < 768; i++ {
-		a[i] = math.Sin(float64(i) * 0.1)
-		b[i] = math.Cos(float64(i) * 0.1)
+	n := must(Normalize([]float64{3, 4}))
+	if n[0] != 0.6000000000000001 || n[1] != 0.8 { // a[i] * (1 / norm)
+		t.Fatal(n)
 	}
-	r, err := CosineSimilarity(a, b)
-	if err != nil {
-		t.Fatal(err)
+	if v := must(VecAdd([]float64{1, 2}, []float64{3, 4})); v[0] != 4 || v[1] != 6 {
+		t.Fatal(v)
 	}
-	assertClose(t, "cos_768d", r, 0.012394344943011405, 1e-10)
-}
-
-// ── Dot product ──
-
-func TestDotBasic(t *testing.T) {
-	r, err := DotProduct([]float64{1, 2, 3}, []float64{4, 5, 6})
-	if err != nil {
-		t.Fatal(err)
+	if v := must(VecSub([]float64{1, 2}, []float64{3, 4})); v[0] != -2 || v[1] != -2 {
+		t.Fatal(v)
 	}
-	assertClose(t, "dot_basic", r, 32.0, tol)
-}
-
-func TestDotZeros(t *testing.T) {
-	r, err := DotProduct([]float64{0, 0, 0}, []float64{1, 2, 3})
-	if err != nil {
-		t.Fatal(err)
+	if v := must(VecMulScalar([]float64{1, 2}, 3)); v[1] != 6 {
+		t.Fatal(v)
 	}
-	assertClose(t, "dot_zeros", r, 0.0, tol)
-}
-
-func TestDotNegative(t *testing.T) {
-	r, err := DotProduct([]float64{1, -2, 3}, []float64{-4, 5, -6})
-	if err != nil {
-		t.Fatal(err)
-	}
-	assertClose(t, "dot_negative", r, -32.0, tol)
-}
-
-func TestDotSingle(t *testing.T) {
-	r, err := DotProduct([]float64{7}, []float64{3})
-	if err != nil {
-		t.Fatal(err)
-	}
-	assertClose(t, "dot_single", r, 21.0, tol)
-}
-
-// ── L2 distance ──
-
-func TestL2Basic(t *testing.T) {
-	r, err := L2Distance([]float64{1, 2, 3}, []float64{4, 5, 6})
-	if err != nil {
-		t.Fatal(err)
-	}
-	assertClose(t, "l2_basic", r, 5.196152422706632, tol)
-}
-
-func TestL2Identical(t *testing.T) {
-	r, err := L2Distance([]float64{1, 2, 3}, []float64{1, 2, 3})
-	if err != nil {
-		t.Fatal(err)
-	}
-	assertClose(t, "l2_identical", r, 0.0, tol)
-}
-
-func TestL2UnitAxes(t *testing.T) {
-	r, err := L2Distance([]float64{1, 0, 0}, []float64{0, 1, 0})
-	if err != nil {
-		t.Fatal(err)
-	}
-	assertClose(t, "l2_unit_axes", r, 1.4142135623730951, tol)
-}
-
-// ── L2 norm ──
-
-func TestL2NormBasic(t *testing.T) {
-	r, err := L2Norm([]float64{3, 4})
-	if err != nil {
-		t.Fatal(err)
-	}
-	assertClose(t, "l2norm_basic", r, 5.0, tol)
-}
-
-func TestL2Norm3d(t *testing.T) {
-	r, err := L2Norm([]float64{1, 2, 3})
-	if err != nil {
-		t.Fatal(err)
-	}
-	assertClose(t, "l2norm_3d", r, 3.7416573867739413, tol)
-}
-
-// ── Normalize ──
-
-func TestNormalizeBasic(t *testing.T) {
-	r, err := Normalize([]float64{3, 4})
-	if err != nil {
-		t.Fatal(err)
-	}
-	assertClose(t, "norm[0]", r[0], 0.6, tol)
-	assertClose(t, "norm[1]", r[1], 0.8, tol)
-}
-
-func TestNormalize3d(t *testing.T) {
-	expected := []float64{0.2672612419124244, 0.5345224838248488, 0.8017837257372732}
-	r, err := Normalize([]float64{1, 2, 3})
-	if err != nil {
-		t.Fatal(err)
-	}
-	for i := 0; i < 3; i++ {
-		assertClose(t, "norm_3d", r[i], expected[i], tol)
+	if must(DotProduct([]float64{1e16, 1, -1e16, 1}, []float64{1, 1, 1, 1})) != 0 {
+		t.Fatal("lane order")
 	}
 }
 
-// ── Arithmetic ──
-
-func TestVecAdd(t *testing.T) {
-	r, err := VecAdd([]float64{1, 2, 3}, []float64{4, 5, 6})
-	if err != nil {
-		t.Fatal(err)
+func TestFloat32API(t *testing.T) {
+	if must(DotProductF32([]float32{1, 2, 3}, []float32{4, 5, 6})) != 32 {
+		t.Fatal("dot")
 	}
-	expected := []float64{5, 7, 9}
-	for i := range expected {
-		assertClose(t, "add", r[i], expected[i], tol)
+	if must(L2NormF32([]float32{3, 4})) != 5 {
+		t.Fatal("norm")
 	}
-}
-
-func TestVecSub(t *testing.T) {
-	r, err := VecSub([]float64{4, 5, 6}, []float64{1, 2, 3})
-	if err != nil {
-		t.Fatal(err)
+	if must(L2DistanceF32([]float32{0, 0}, []float32{3, 4})) != 5 {
+		t.Fatal("l2")
 	}
-	expected := []float64{3, 3, 3}
-	for i := range expected {
-		assertClose(t, "sub", r[i], expected[i], tol)
+	if must(CosineSimilarityF32([]float32{1, 1}, []float32{2, 2})) != 1 {
+		t.Fatal("cosine")
 	}
-}
-
-func TestVecMulScalar(t *testing.T) {
-	r, err := VecMulScalar([]float64{1, 2, 3}, 2.5)
-	if err != nil {
-		t.Fatal(err)
+	if v := must(NormalizeF32([]float32{3, 4})); v[0] != float32(3)*float32(0.2) {
+		t.Fatal(v)
 	}
-	expected := []float64{2.5, 5.0, 7.5}
-	for i := range expected {
-		assertClose(t, "mul_scalar", r[i], expected[i], tol)
+	if v := must(VecAddF32([]float32{1}, []float32{2})); v[0] != 3 {
+		t.Fatal(v)
 	}
-}
-
-// ── Batch ──
-
-func TestBatchCosine(t *testing.T) {
-	q := []float64{1, 0, 0}
-	cands := [][]float64{
-		{0, 1, 0},
-		{1, 0, 0},
-		{1, 1, 0},
+	if v := must(VecSubF32([]float32{1}, []float32{2})); v[0] != -1 {
+		t.Fatal(v)
 	}
-	r, err := BatchCosine(q, cands)
-	if err != nil {
-		t.Fatal(err)
+	if v := must(VecMulScalarF32([]float32{1}, 2)); v[0] != 2 {
+		t.Fatal(v)
 	}
-	if r[0].Index != 1 {
-		t.Errorf("batch_cosine[0]: expected index 1, got %d", r[0].Index)
+	r := must(BatchCosineF32([]float32{1, 1}, [][]float32{{0, 0}, {1, 1}}))
+	if r[0].Index != 1 || r[1].Score != 0 {
+		t.Fatal(r)
 	}
-	assertClose(t, "batch_cosine[0].score", r[0].Score, 1.0, tol)
-}
-
-func TestBatchL2(t *testing.T) {
-	q := []float64{1, 0, 0}
-	cands := [][]float64{
-		{0, 1, 0},
-		{1, 0, 0},
-		{2, 0, 0},
+	if r := must(BatchDotF32([]float32{1}, [][]float32{{1}, {2}})); r[0].Index != 1 {
+		t.Fatal(r)
 	}
-	r, err := BatchL2(q, cands)
-	if err != nil {
-		t.Fatal(err)
+	if r := must(BatchL2F32([]float32{0}, [][]float32{{2}, {1}})); r[0].Index != 1 {
+		t.Fatal(r)
 	}
-	if r[0].Index != 1 {
-		t.Errorf("batch_l2[0]: expected index 1, got %d", r[0].Index)
-	}
-	assertClose(t, "batch_l2[0].score", r[0].Score, 0.0, tol)
-}
-
-// ── Error handling ──
-
-func TestEmptyVector(t *testing.T) {
-	_, err := CosineSimilarity([]float64{}, []float64{})
-	if err != ErrEmptyVector {
-		t.Errorf("expected ErrEmptyVector, got %v", err)
+	if m := must(DistanceMatrixCosineF32([][]float32{{1, 0}}, [][]float32{{1, 0}, {0, 0}})); m[0][0] != 1 || m[0][1] != 0 {
+		t.Fatal(m)
 	}
 }
 
-func TestDimensionMismatch(t *testing.T) {
-	_, err := DotProduct([]float64{1, 2}, []float64{1, 2, 3})
-	if err != ErrDimensionMismatch {
-		t.Errorf("expected ErrDimensionMismatch, got %v", err)
+func TestBatchAndMatrix(t *testing.T) {
+	r := must(BatchDot([]float64{1, 1}, [][]float64{{1, 0}, {0, 1}, {2, -1}, {-1, 2}}))
+	for i, x := range r {
+		if x.Index != i {
+			t.Fatal("ties must keep index order", r)
+		}
+	}
+	l := must(BatchL2([]float64{0, 0}, [][]float64{{3, 4}, {1, 0}, {0, 1}}))
+	if l[0].Index != 1 || l[1].Index != 2 || l[2].Score != 5 {
+		t.Fatal(l)
+	}
+	c := must(BatchCosine([]float64{1, 1}, [][]float64{{0, 0}, {1, 1}}))
+	if c[0].Index != 1 {
+		t.Fatal(c)
+	}
+	m := must(DistanceMatrixCosine([][]float64{{1, 0}, {0, 0}}, [][]float64{{1, 0}}))
+	if m[0][0] != 1 || m[1][0] != 0 {
+		t.Fatal(m)
 	}
 }
 
-func TestZeroMagnitude(t *testing.T) {
-	_, err := Normalize([]float64{0, 0, 0})
-	if err != ErrZeroMagnitude {
-		t.Errorf("expected ErrZeroMagnitude, got %v", err)
+func TestErrors(t *testing.T) {
+	_, err := DotProduct(nil, nil)
+	wantErr(t, err, ErrEmptyVector)
+	_, err = DotProduct([]float64{1}, []float64{1, 2})
+	wantErr(t, err, ErrDimensionMismatch)
+	if err.Error() != "DIMENSION_MISMATCH: expected 1 elements, got 2" {
+		t.Fatal(err.Error())
+	}
+	_, err = CosineSimilarity([]float64{0, 0}, []float64{1, 1})
+	wantErr(t, err, ErrZeroMagnitude)
+	_, err = CosineSimilarity([]float64{1, math.NaN()}, []float64{1, 1})
+	wantErr(t, err, ErrNonFinite)
+	_, err = CosineSimilarity([]float64{1, 1}, []float64{math.Inf(1), 1})
+	wantErr(t, err, ErrNonFinite)
+	_, err = CosineSimilarity([]float64{1e200, 1e200}, []float64{1, 1})
+	wantErr(t, err, ErrNonFinite)
+	_, err = L2Norm(nil)
+	wantErr(t, err, ErrEmptyVector)
+	_, err = L2Distance([]float64{math.MaxFloat64}, []float64{-math.MaxFloat64})
+	wantErr(t, err, ErrNonFinite)
+	_, err = Normalize(nil)
+	wantErr(t, err, ErrEmptyVector)
+	_, err = Normalize([]float64{0})
+	wantErr(t, err, ErrZeroMagnitude)
+	_, err = Normalize([]float64{math.Inf(1)})
+	wantErr(t, err, ErrNonFinite)
+	_, err = VecAdd([]float64{math.MaxFloat64}, []float64{math.MaxFloat64})
+	wantErr(t, err, ErrNonFinite)
+	_, err = VecAdd([]float64{1}, nil)
+	wantErr(t, err, ErrDimensionMismatch)
+	_, err = VecMulScalar(nil, 1)
+	wantErr(t, err, ErrEmptyVector)
+	_, err = VecMulScalar([]float64{2}, math.MaxFloat64)
+	wantErr(t, err, ErrNonFinite)
+	_, err = BatchCosine(nil, nil)
+	wantErr(t, err, ErrEmptyVector)
+	_, err = BatchCosine([]float64{0}, nil)
+	wantErr(t, err, ErrZeroMagnitude)
+	_, err = BatchCosine([]float64{math.Inf(1)}, nil)
+	wantErr(t, err, ErrNonFinite)
+	_, err = BatchCosine([]float64{1}, [][]float64{{1, 2}})
+	wantErr(t, err, ErrDimensionMismatch)
+	_, err = BatchCosine([]float64{1}, [][]float64{{math.NaN()}})
+	wantErr(t, err, ErrNonFinite)
+	_, err = BatchCosine([]float64{0, 1}, [][]float64{{1e200, 0}})
+	wantErr(t, err, ErrNonFinite)
+	_, err = BatchDot(nil, nil)
+	wantErr(t, err, ErrEmptyVector)
+	_, err = BatchDot([]float64{1}, [][]float64{{1, 2}})
+	wantErr(t, err, ErrDimensionMismatch)
+	_, err = BatchDot([]float64{math.MaxFloat64}, [][]float64{{2}})
+	wantErr(t, err, ErrNonFinite)
+	_, err = DistanceMatrixCosine(nil, [][]float64{{1}})
+	wantErr(t, err, ErrEmptyVector)
+	_, err = DistanceMatrixCosine([][]float64{{}}, [][]float64{{}})
+	wantErr(t, err, ErrEmptyVector)
+	_, err = DistanceMatrixCosine([][]float64{{1, 0}}, [][]float64{{1}})
+	wantErr(t, err, ErrDimensionMismatch)
+	_, err = DistanceMatrixCosine([][]float64{{math.NaN()}}, [][]float64{{1}})
+	wantErr(t, err, ErrNonFinite)
+	_, err = DistanceMatrixCosine([][]float64{{1}}, [][]float64{{math.Inf(1)}})
+	wantErr(t, err, ErrNonFinite)
+	_, err = DistanceMatrixCosine([][]float64{{1e200}}, [][]float64{{1e200}})
+	wantErr(t, err, ErrNonFinite)
+	if itoa(0) != "0" || itoa(1536) != "1536" {
+		t.Fatal("itoa")
 	}
 }

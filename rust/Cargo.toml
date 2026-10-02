@@ -1,27 +1,31 @@
 [package]
 name = "lombokvector"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
+rust-version = "1.70"
 authors = ["codinglombok"]
 license = "Apache-2.0"
-description = "SIMD-optimized vector math for RAG systems — cosine similarity, dot product, L2 distance, normalization. Zero dependencies, no_std compatible."
+description = "Vector math with bit-identical results across Rust, TypeScript, Python, Go and PHP: dot product, cosine similarity, L2 distance, normalization, batch ranking. SIMD (AVX2, NEON, WASM) without changing results. Zero dependencies, no_std."
 repository = "https://github.com/codinglombok/LombokVector"
-keywords = ["vector", "simd", "cosine-similarity", "rag", "embedding"]
+readme = "README.md"
+keywords = ["vector", "simd", "cosine-similarity", "embedding", "no-std"]
 categories = ["mathematics", "algorithms", "no-std"]
-readme = "../README.md"
+exclude = ["target/"]
 
 [features]
-default = ["std", "auto-detect"]
-std = []
-auto-detect = ["std"]
-avx2 = []
-avx512 = []
-neon = []
-wasm-simd = []
+default = ["std"]
+# runtime CPU feature detection and std::error::Error
+std = ["alloc"]
+# functions that return Vec (normalize, vec_add, batch_*, distance_matrix_*)
+alloc = []
+# always use the scalar kernels (results are identical; useful for testing)
 portable = []
+# C ABI functions declared in c-headers/lombokvector.h
+ffi = []
 
 [dev-dependencies]
-criterion = { version = "0.5", features = ["html_reports"] }
+serde_json = { version = "1", features = ["float_roundtrip"] }
+criterion = { version = "0.5", default-features = false }
 
 [[bench]]
 name = "bench_ops"
