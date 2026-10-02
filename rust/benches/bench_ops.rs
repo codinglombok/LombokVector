@@ -1,5 +1,5 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
-use lombokvector::{cosine_similarity, dot_product, l2_distance, batch_cosine_similarity};
+use lombokvector::{batch_cosine, cosine_similarity, dot_product, l2_distance};
 
 fn generate_vectors(dim: usize, count: usize) -> Vec<Vec<f32>> {
     (0..count)
@@ -44,9 +44,15 @@ fn bench_batch_cosine(c: &mut Criterion) {
     let refs: Vec<&[f32]> = candidates.iter().map(|v| v.as_slice()).collect();
 
     c.bench_function("batch_cosine_1000x768d", |bencher| {
-        bencher.iter(|| batch_cosine_similarity(black_box(&query), black_box(&refs)))
+        bencher.iter(|| batch_cosine(black_box(&query), black_box(&refs)))
     });
 }
 
-criterion_group!(benches, bench_cosine, bench_dot, bench_l2, bench_batch_cosine);
+criterion_group!(
+    benches,
+    bench_cosine,
+    bench_dot,
+    bench_l2,
+    bench_batch_cosine
+);
 criterion_main!(benches);

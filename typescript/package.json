@@ -1,0 +1,33 @@
+{
+  "name": "lombokvector",
+  "version": "0.2.0",
+  "description": "Vector math with bit-identical results across TypeScript, Rust, Python, Go and PHP: dot product, cosine similarity, L2 distance, normalization, batch ranking. Zero dependencies. Part of the Lombok Ecosystem.",
+  "keywords": ["vector", "cosine-similarity", "dot-product", "embedding", "deterministic", "zero-dependency", "lombok-ecosystem"],
+  "homepage": "https://github.com/codinglombok/LombokVector",
+  "bugs": { "url": "https://github.com/codinglombok/LombokVector/issues" },
+  "license": "Apache-2.0",
+  "author": "codinglombok",
+  "repository": { "type": "git", "url": "https://github.com/codinglombok/LombokVector.git", "directory": "typescript" },
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": { "types": "./dist/index.d.ts", "default": "./dist/index.js" },
+    "./package.json": "./package.json"
+  },
+  "files": ["dist/index.js", "dist/index.d.ts", "README.md", "LICENSE"],
+  "sideEffects": false,
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "build:test": "tsc -p tsconfig.test.json",
+    "test": "npm run build:test && cd build && node --test",
+    "coverage": "npm run build:test && node scripts/coverage.mjs build",
+    "lint": "tsc -p tsconfig.test.json --noEmit",
+    "prepublishOnly": "npm run build"
+  },
+  "engines": { "node": ">=20" },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "typescript": "^5.9.3"
+  }
+}

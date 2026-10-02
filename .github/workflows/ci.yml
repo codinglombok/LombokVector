@@ -1,8 +1,12 @@
+# CI — LombokVector: five ports must reproduce the same IEEE 754 bit patterns.
 name: CI
+
+permissions:
+  contents: read
 
 on:
   push:
-    branches: [main, develop]
+    branches: [main]
   pull_request:
     branches: [main]
 
@@ -11,135 +15,208 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # ── Rust ──
   rust:
+    # ubuntu/windows run the AVX2 kernel, macos-latest (Apple Silicon) the NEON kernel
     name: Rust (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    defaults:
+      run:
+        working-directory: rust
     steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master
         with:
+          toolchain: stable
           components: clippy, rustfmt
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
-          workspaces: rust -> target
-      - name: Format check
-        working-directory: rust
-        run: cargo fmt --check
-      - name: Clippy
-        working-directory: rust
-        run: cargo clippy --all-features -- -D warnings
-      - name: Test (default features)
-        working-directory: rust
-        run: cargo test
-      - name: Test (portable only)
-        working-directory: rust
-        run: cargo test --no-default-features --features portable
-      - name: Test (no_std + portable)
-        working-directory: rust
-        run: cargo test --no-default-features --features portable
+          workspaces: rust
+      - run: cargo fmt --check
+      - run: cargo clippy --all-targets --features ffi -- -D warnings
+      - run: cargo test --features ffi
+      - name: Scalar kernels give the same bits
+        run: cargo test --features portable --test vectors
 
-  rust-no-std:
-    name: Rust no_std check
+  rust-targets:
+    name: Rust targets (no_std, aarch64, wasm, MSRV)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: rust
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master
+        with:
+          toolchain: stable
+          targets: thumbv7em-none-eabihf, aarch64-unknown-linux-gnu, wasm32-unknown-unknown
+      - name: no_std without allocator (embedded)
+        run: cargo check --no-default-features --target thumbv7em-none-eabihf
+      - name: no_std with alloc
+        run: cargo check --no-default-features --features alloc --target thumbv7em-none-eabihf
+      - name: aarch64 (NEON)
+        run: cargo check --target aarch64-unknown-linux-gnu
+      - name: wasm32 with simd128
+        env:
+          RUSTFLAGS: -C target-feature=+simd128
+        run: cargo check --no-default-features --features alloc --target wasm32-unknown-unknown
+      - name: no_std build (software sqrt, static AVX2) passes the vectors
+        env:
+          RUSTFLAGS: -C target-feature=+avx2
+        run: cargo test --no-default-features --features alloc --test vectors --test simd_matches_reference
+      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master
+        with:
+          toolchain: "1.70"
+      - name: MSRV 1.70
+        run: cargo +1.70 check --lib --features ffi
+
+  rust-coverage:
+    name: Rust coverage
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: rust
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master
+        with:
+          toolchain: stable
+          components: llvm-tools-preview
+      - uses: taiki-e/install-action@4cef1412cce204788f482e778a0b9187f9626a29 # v2.87.21
+        with:
+          tool: cargo-llvm-cov
+      - run: cargo llvm-cov --features ffi --fail-under-lines 90
+
+  c-api:
+    name: C API smoke test
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master
         with:
-          targets: thumbv7em-none-eabihf
-      - name: Check no_std build
+          toolchain: stable
+      - run: cargo rustc --release --features ffi --crate-type cdylib
         working-directory: rust
-        run: cargo check --no-default-features --features portable --target thumbv7em-none-eabihf
+      - working-directory: c-headers/examples
+        run: |
+          cc -Wall -Wextra -Werror check.c -I.. -L../../rust/target/release -llombokvector -o check
+          LD_LIBRARY_PATH=../../rust/target/release ./check
 
-  rust-wasm:
-    name: Rust WASM
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: wasm32-unknown-unknown
-      - name: Check WASM build
-        working-directory: rust
-        run: cargo check --no-default-features --features "wasm-simd" --target wasm32-unknown-unknown
-
-  # ── TypeScript ──
   typescript:
-    name: TypeScript (Node ${{ matrix.node }})
-    runs-on: ubuntu-latest
+    name: TypeScript (${{ matrix.os }}, Node ${{ matrix.node }})
+    runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
-        node: ['18', '20', '22']
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        node: [20, 22, 24]
+    defaults:
+      run:
+        working-directory: typescript
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: ${{ matrix.node }}
-      - name: Install
-        working-directory: ts
-        run: npm install
-      - name: Type check
-        working-directory: ts
-        run: npx tsc --noEmit
-      - name: Test
-        working-directory: ts
-        run: node --test src/test.ts || node --import tsx --test src/test.ts
+          cache: npm
+          cache-dependency-path: typescript/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run coverage
+      - run: npm run build
+      - if: matrix.os == 'ubuntu-latest' && matrix.node == 24
+        run: npm pack --dry-run
 
-  # ── Python ──
   python:
-    name: Python ${{ matrix.python }}
-    runs-on: ubuntu-latest
+    name: Python ${{ matrix.python }} (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
-        python: ['3.9', '3.10', '3.11', '3.12', '3.13']
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        python: ["3.9", "3.11", "3.13"]
+    defaults:
+      run:
+        working-directory: python
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: ${{ matrix.python }}
-      - name: Test
-        working-directory: python
-        run: python -m unittest test_lombokvector -v
+      - run: python -m pip install pytest coverage build
+      - run: python -m coverage run --branch --source=lombokvector -m pytest -q
+      - run: python -m coverage report -m --fail-under=90
+      - run: python -m build
 
-  # ── Go ──
   go:
-    name: Go ${{ matrix.go }}
-    runs-on: ubuntu-latest
+    # macos-latest is arm64, where the Go compiler may fuse multiply-adds unless prevented
+    name: Go ${{ matrix.go }} (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
-        go: ['1.21', '1.22', '1.23']
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        go: ["1.22", "1.24"]
+    defaults:
+      run:
+        working-directory: go
+        shell: bash
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version: ${{ matrix.go }}
-      - name: Test
-        working-directory: go
-        run: go test -v -race ./...
-      - name: Vet
-        working-directory: go
-        run: go vet ./...
+          cache: false
+      - name: gofmt
+        if: runner.os == 'Linux'
+        run: |
+          out=$(gofmt -l .)
+          if [ -n "$out" ]; then echo "not gofmt-formatted:"; echo "$out"; exit 1; fi
+      - run: go vet ./...
+      - run: go test -coverprofile=cover.out ./...
+      - name: Coverage >= 90%
+        run: |
+          total=$(go tool cover -func=cover.out | awk '/^total:/ {sub("%","",$3); print $3}')
+          echo "coverage: $total%"
+          awk -v t="$total" 'BEGIN { exit !(t >= 90) }'
 
-  # ── PHP ──
   php:
-    name: PHP ${{ matrix.php }}
-    runs-on: ubuntu-latest
+    name: PHP ${{ matrix.php }} (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
-        php: ['8.1', '8.2', '8.3', '8.4']
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        php: ["8.1", "8.3"]
+    defaults:
+      run:
+        working-directory: php
     steps:
-      - uses: actions/checkout@v4
-      - uses: shivammathur/setup-php@v2
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # 2.37.2
         with:
           php-version: ${{ matrix.php }}
-          tools: composer:v2
-      - name: Install
-        working-directory: php
-        run: composer install --no-interaction --prefer-dist
-      - name: Test
-        working-directory: php
-        run: vendor/bin/phpunit --colors=always
+          coverage: pcov
+          tools: none
+      - name: Lint
+        shell: bash
+        run: for f in $(find src tests -name '*.php'); do php -l "$f" > /dev/null || exit 1; done
+      - run: php -d pcov.enabled=1 -d pcov.directory=src tests/run.php --coverage=90
+
+  standards:
+    name: Standards (vectors, doctor)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Vector file matches its source and SHA256SUMS
+        run: |
+          python3 vectors/build_vectors.py
+          git diff --exit-code vectors/lombokvector-vectors-v1.json
+          sha256sum -c vectors/SHA256SUMS
+      - name: lombok doctor
+        env:
+          LOMBOK_PRIVACY_TERMS: ${{ secrets.LOMBOK_PRIVACY_TERMS }}
+        run: bash scripts/lombok-doctor.sh LombokVector

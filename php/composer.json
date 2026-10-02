@@ -1,30 +1,20 @@
 {
     "name": "codinglombok/lombokvector",
-    "description": "SIMD-style vector math for RAG systems — cosine similarity, dot product, L2 distance. Zero dependencies.",
+    "description": "Vector math with bit-identical results across PHP, Rust, TypeScript, Python and Go: dot product, cosine similarity, L2 distance, normalization, batch ranking. Zero dependencies.",
     "type": "library",
     "license": "Apache-2.0",
-    "version": "0.1.0",
-    "authors": [
-        { "name": "codinglombok" }
-    ],
+    "keywords": ["vector", "cosine-similarity", "embedding", "deterministic", "lombok-ecosystem"],
+    "homepage": "https://github.com/codinglombok/LombokVector",
+    "authors": [{ "name": "codinglombok" }],
+    "require": {
+        "php": ">=8.1"
+    },
     "autoload": {
         "psr-4": {
             "CodingLombok\\LombokVector\\": "src/"
         }
     },
-    "require": {
-        "php": ">=8.1"
-    },
-    "autoload-dev": {
-        "psr-4": {
-            "CodingLombok\\LombokVector\\Tests\\": "tests/"
-        }
-    },
-    "require-dev": {
-        "phpunit/phpunit": "^11.0"
-    },
     "scripts": {
-        "test": "phpunit"
-    },
-    "minimum-stability": "stable"
+        "test": "php tests/run.php"
+    }
 }

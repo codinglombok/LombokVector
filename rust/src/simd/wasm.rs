@@ -1,101 +1,82 @@
-// LombokVector — WebAssembly SIMD backend (128-bit, 4×f32)
-// License: Apache-2.0
+//! WebAssembly SIMD kernels (simd128): two v128 registers hold lanes 0-3 and 4-7.
 
-#[cfg(target_arch = "wasm32")]
 use core::arch::wasm32::*;
 
-/// WASM SIMD dot product (f32). Processes 4 floats per iteration.
-#[cfg(target_arch = "wasm32")]
-#[target_feature(enable = "simd128")]
-pub unsafe fn dot_f32(a: &[f32], b: &[f32]) -> f32 {
-    let len = a.len();
-    let chunks = len / 4;
-    let remainder = len % 4;
+use super::{tail_into, Kind};
+use crate::kernels::{combine_f32, LANES};
 
-    let mut acc = f32x4_splat(0.0);
-    let a_ptr = a.as_ptr();
-    let b_ptr = b.as_ptr();
-
-    for i in 0..chunks {
-        let offset = i * 4;
-        let va = v128_load(a_ptr.add(offset) as *const v128);
-        let vb = v128_load(b_ptr.add(offset) as *const v128);
-        let prod = f32x4_mul(va, vb);
-        acc = f32x4_add(acc, prod);
-    }
-
-    let mut sum = f32x4_extract_lane::<0>(acc)
-        + f32x4_extract_lane::<1>(acc)
-        + f32x4_extract_lane::<2>(acc)
-        + f32x4_extract_lane::<3>(acc);
-
-    let base = chunks * 4;
-    for j in 0..remainder {
-        sum += a[base + j] * b[base + j];
-    }
-    sum
+#[inline]
+unsafe fn load(p: *const f32) -> v128 {
+    // SAFETY: callers pass a pointer with at least four readable f32 values.
+    unsafe { v128_load(p as *const v128) }
 }
 
-/// WASM SIMD sum of squares (f32).
-#[cfg(target_arch = "wasm32")]
-#[target_feature(enable = "simd128")]
-pub unsafe fn sum_squares_f32(a: &[f32]) -> f32 {
-    let len = a.len();
-    let chunks = len / 4;
-    let remainder = len % 4;
-
-    let mut acc = f32x4_splat(0.0);
-    let a_ptr = a.as_ptr();
-
-    for i in 0..chunks {
-        let offset = i * 4;
-        let va = v128_load(a_ptr.add(offset) as *const v128);
-        let prod = f32x4_mul(va, va);
-        acc = f32x4_add(acc, prod);
+unsafe fn run(a: &[f32], b: &[f32], kind: Kind) -> f32 {
+    // SAFETY: the intrinsics need the target feature, which the callers guarantee
+    // (runtime detection or compile-time cfg); Rust before 1.87 treats them as
+    // unsafe even inside a #[target_feature] function.
+    #[allow(unused_unsafe)]
+    unsafe {
+        let n = a.len() - a.len() % LANES;
+        let mut lo = f32x4_splat(0.0);
+        let mut hi = f32x4_splat(0.0);
+        let mut i = 0;
+        while i < n {
+            // SAFETY: i + 8 <= n <= a.len() and b.len() >= a.len() (checked by callers).
+            let (a0, a1) = unsafe { (load(a.as_ptr().add(i)), load(a.as_ptr().add(i + 4))) };
+            let (p0, p1) = match kind {
+                Kind::Dot => {
+                    let (b0, b1) =
+                        unsafe { (load(b.as_ptr().add(i)), load(b.as_ptr().add(i + 4))) };
+                    (f32x4_mul(a0, b0), f32x4_mul(a1, b1))
+                }
+                Kind::SumSq => (f32x4_mul(a0, a0), f32x4_mul(a1, a1)),
+                Kind::L2Sq => {
+                    let (b0, b1) =
+                        unsafe { (load(b.as_ptr().add(i)), load(b.as_ptr().add(i + 4))) };
+                    let (d0, d1) = (f32x4_sub(a0, b0), f32x4_sub(a1, b1));
+                    (f32x4_mul(d0, d0), f32x4_mul(d1, d1))
+                }
+            };
+            lo = f32x4_add(lo, p0);
+            hi = f32x4_add(hi, p1);
+            i += LANES;
+        }
+        let s0 = [
+            f32x4_extract_lane::<0>(lo),
+            f32x4_extract_lane::<1>(lo),
+            f32x4_extract_lane::<2>(lo),
+            f32x4_extract_lane::<3>(lo),
+            f32x4_extract_lane::<0>(hi),
+            f32x4_extract_lane::<1>(hi),
+            f32x4_extract_lane::<2>(hi),
+            f32x4_extract_lane::<3>(hi),
+        ];
+        let mut s = s0;
+        let rb = if matches!(kind, Kind::SumSq) {
+            &a[n..]
+        } else {
+            &b[n..a.len()]
+        };
+        tail_into(&mut s, &a[n..], rb, kind);
+        combine_f32(&s)
     }
-
-    let mut sum = f32x4_extract_lane::<0>(acc)
-        + f32x4_extract_lane::<1>(acc)
-        + f32x4_extract_lane::<2>(acc)
-        + f32x4_extract_lane::<3>(acc);
-
-    let base = chunks * 4;
-    for j in 0..remainder {
-        sum += a[base + j] * a[base + j];
-    }
-    sum
 }
 
-/// WASM SIMD L2 squared distance (f32).
-#[cfg(target_arch = "wasm32")]
-#[target_feature(enable = "simd128")]
-pub unsafe fn l2_sq_f32(a: &[f32], b: &[f32]) -> f32 {
-    let len = a.len();
-    let chunks = len / 4;
-    let remainder = len % 4;
+/// # Safety
+/// `b.len() >= a.len()`.
+pub(crate) unsafe fn dot_f32(a: &[f32], b: &[f32]) -> f32 {
+    unsafe { run(a, b, Kind::Dot) }
+}
 
-    let mut acc = f32x4_splat(0.0);
-    let a_ptr = a.as_ptr();
-    let b_ptr = b.as_ptr();
+/// # Safety
+/// Always safe on targets with simd128; `unsafe` only for a uniform signature.
+pub(crate) unsafe fn sumsq_f32(a: &[f32]) -> f32 {
+    unsafe { run(a, a, Kind::SumSq) }
+}
 
-    for i in 0..chunks {
-        let offset = i * 4;
-        let va = v128_load(a_ptr.add(offset) as *const v128);
-        let vb = v128_load(b_ptr.add(offset) as *const v128);
-        let diff = f32x4_sub(va, vb);
-        let sq = f32x4_mul(diff, diff);
-        acc = f32x4_add(acc, sq);
-    }
-
-    let mut sum = f32x4_extract_lane::<0>(acc)
-        + f32x4_extract_lane::<1>(acc)
-        + f32x4_extract_lane::<2>(acc)
-        + f32x4_extract_lane::<3>(acc);
-
-    let base = chunks * 4;
-    for j in 0..remainder {
-        let d = a[base + j] - b[base + j];
-        sum += d * d;
-    }
-    sum
+/// # Safety
+/// `b.len() >= a.len()`.
+pub(crate) unsafe fn l2sq_f32(a: &[f32], b: &[f32]) -> f32 {
+    unsafe { run(a, b, Kind::L2Sq) }
 }

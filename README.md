@@ -1,78 +1,74 @@
 # LombokVector
 
-**SIMD-optimized vector math for RAG systems.**
-Zero dependencies. `no_std` compatible. Multi-language.
+> Vector math that gives the same bits in Rust, TypeScript, Python, Go, PHP, and C: dot product, cosine similarity, Euclidean distance, normalization, batch ranking. Zero runtime dependencies; the Rust crate is `no_std` and uses AVX2, NEON, or WASM SIMD without changing results.
 
-Part of [LombokRAGFrameworks](https://github.com/codinglombok/LombokRAGFrameworks) — Lombok Ecosystem ([@codinglombok](https://github.com/codinglombok)).
+[![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
+[![CI](https://github.com/codinglombok/LombokVector/actions/workflows/ci.yml/badge.svg)](https://github.com/codinglombok/LombokVector/actions/workflows/ci.yml)
+[![Vectors](https://img.shields.io/badge/shared%20vectors-223%20bit--exact-success)](vectors/)
+[![Lombok Ecosystem](https://img.shields.io/badge/Lombok-Ecosystem-2e7d5b?logo=github)](https://github.com/codinglombok)
 
-## Features
+Part of the [Lombok Ecosystem](https://github.com/codinglombok).
 
-- **Cosine similarity**, dot product, L2 distance, inner product, normalization
-- **Batch operations** — query vs N candidates, N×M distance matrix
-- **SIMD backends** — AVX2, AVX-512, ARM NEON, WASM-SIMD, portable scalar
-- **Runtime auto-detection** on x86_64 (CPUID)
-- **f32 + f64 precision** — f32 default (fast), f64 optional (accurate)
-- **no_std** — zero heap allocations in hot path, works on embedded/RTOS
-- **Zero dependencies** — stdlib only, no tokio/rayon/ndarray
+## Mengapa library ini? (Why this library?)
 
-## Install
+- **Bit-identical across languages.** Floating-point sums depend on their order. LombokVector fixes the order (8 lanes, separate rounding, no fused multiply-add; [SPEC section 2](docs/SPEC_LombokVector_v0.2.0.md#2-reduksi-8-lajur-inti-kontrak)), so a score computed in a Python batch job, a Go service, and a TypeScript browser app is exactly the same number. All ports check 223 shared cases bit for bit in CI.
+- **SIMD that does not change answers.** The Rust AVX2 (x86), NEON (aarch64), and simd128 (wasm32) kernels follow the same order as the scalar code, and a test compares them on every build. Measured: AVX2 dot product of 768 binary32 values in about 56 ns versus 72 ns for the scalar kernel on one x86_64 machine (the scalar code is already auto-vectorized), so expect a modest speed-up rather than a large one.
+- **Explicit failure modes.** Empty input, length mismatch, zero magnitude, and overflow or non-finite input (`NON_FINITE`) are errors with the same code in every language, instead of silent NaN.
+- **Runs small.** Rust `no_std` without an allocator (embedded), with a correctly rounded software square root, plus a C API. Pure TypeScript, Python, Go, and PHP with no dependencies.
 
-```bash
-# Rust
-cargo add lombokvector
+## Installation
 
-# TypeScript/Node.js
-npm install lombokvector
+| Language | Package | Status |
+|---|---|---|
+| Rust | `lombokvector` (crates.io) | not yet published |
+| TypeScript / JavaScript | `lombokvector` (npm) | not yet published |
+| Python | `lombokvector` (PyPI) | not yet published |
+| Go | `github.com/codinglombok/lombokvector/go` | tag `go/v0.2.0` on release |
+| PHP | `codinglombok/lombokvector` (Packagist) | needs a split repository first |
+| C | `c-headers/lombokvector.h` + library built from `rust/` | build from source |
 
-# Python
-pip install lombokvector
-
-# PHP
-composer require codinglombok/lombokvector
-
-# Go
-go get github.com/codinglombok/lombokvector
-```
-
-## Quick Start
+## Quick start
 
 ### Rust
 
 ```rust
-use lombokvector::{cosine_similarity, dot_product, l2_distance, normalize};
+use lombokvector::{batch_cosine, cosine_similarity, dot_product, normalize};
 
-let a = &[1.0_f32, 2.0, 3.0];
-let b = &[4.0_f32, 5.0, 6.0];
-
-let cos = cosine_similarity(a, b).unwrap();   // 0.9746318
-let dot = dot_product(a, b).unwrap();          // 32.0
-let l2 = l2_distance(a, b).unwrap();           // 5.196152
-let norm = normalize(a).unwrap();              // [0.267, 0.535, 0.802]
-
-// Check SIMD backend
-println!("Backend: {}", lombokvector::active_backend()); // "avx2" or "portable"
+let a = [1.0_f32, 2.0, 3.0];
+let b = [4.0_f32, 5.0, 6.0];
+assert_eq!(dot_product(&a, &b)?, 32.0);
+let c = cosine_similarity(&a, &b)?;              // f32; *_f64 variants for binary64
+let ranked = batch_cosine(&a, &[&b, &[0.0, 0.0, 1.0]])?;   // [(index, score)], descending
+println!("backend: {}", lombokvector::active_backend());   // "avx2", "neon", "wasm-simd128" or "portable"
 ```
 
 ### TypeScript
 
-```typescript
-import { cosineSimilarity, dotProduct, l2Distance, normalize } from 'lombokvector';
+```ts
+import { cosineSimilarity, batchCosine, VectorError } from 'lombokvector';
 
-const cos = cosineSimilarity([1, 2, 3], [4, 5, 6]); // 0.9746318
-const dot = dotProduct([1, 2, 3], [4, 5, 6]);        // 32.0
-const l2 = l2Distance([1, 2, 3], [4, 5, 6]);         // 5.196152
-const norm = normalize([1, 2, 3]);                    // Float64Array [0.267, 0.535, 0.802]
+cosineSimilarity([1, 2, 3], [4, 5, 6]);           // 0.9746318461970762
+batchCosine(query, docs);                           // [{ index, score }, ...] descending
+try { cosineSimilarity([0, 0], [1, 1]); } catch (e) { (e as VectorError).code; } // 'ZERO_MAGNITUDE'
 ```
 
 ### Python
 
 ```python
-from lombokvector import cosine_similarity, dot_product, l2_distance, normalize
+from lombokvector import cosine_similarity, batch_l2, normalize
 
-cos = cosine_similarity([1, 2, 3], [4, 5, 6])  # 0.9746318
-dot = dot_product([1, 2, 3], [4, 5, 6])        # 32.0
-l2 = l2_distance([1, 2, 3], [4, 5, 6])         # 5.196152
-norm = normalize([1, 2, 3])                     # [0.267, 0.535, 0.802]
+cosine_similarity([1, 2, 3], [4, 5, 6])  # 0.9746318461970762
+batch_l2([0, 0], [[3, 4], [1, 0]])       # [ScoredIndex(index=1, score=1.0), ScoredIndex(index=0, score=5.0)]
+```
+
+### Go
+
+```go
+import lombokvector "github.com/codinglombok/lombokvector/go"
+
+c, err := lombokvector.CosineSimilarity([]float64{1, 2, 3}, []float64{4, 5, 6})
+c32, err := lombokvector.CosineSimilarityF32([]float32{1, 2, 3}, []float32{4, 5, 6})
+if errors.Is(err, lombokvector.ErrZeroMagnitude) { /* ... */ }
 ```
 
 ### PHP
@@ -80,88 +76,49 @@ norm = normalize([1, 2, 3])                     # [0.267, 0.535, 0.802]
 ```php
 use CodingLombok\LombokVector\LombokVector;
 
-$cos = LombokVector::cosineSimilarity([1, 2, 3], [4, 5, 6]); // 0.9746318
-$dot = LombokVector::dotProduct([1, 2, 3], [4, 5, 6]);        // 32.0
-$l2 = LombokVector::l2Distance([1, 2, 3], [4, 5, 6]);         // 5.196152
-$norm = LombokVector::normalize([1, 2, 3]);                    // [0.267, 0.535, 0.802]
+LombokVector::cosineSimilarity([1, 2, 3], [4, 5, 6]); // 0.9746318461970762
+LombokVector::batchDot([1, 1], [[1, 0], [2, 2]]);     // [['index' => 1, 'score' => 4.0], ...]
 ```
 
-### Go
+### C
 
-```go
-import lv "github.com/codinglombok/lombokvector"
-
-cos, _ := lv.CosineSimilarity([]float64{1, 2, 3}, []float64{4, 5, 6}) // 0.9746318
-dot, _ := lv.DotProduct([]float64{1, 2, 3}, []float64{4, 5, 6})       // 32.0
-l2, _ := lv.L2Distance([]float64{1, 2, 3}, []float64{4, 5, 6})        // 5.196152
-norm, _ := lv.Normalize([]float64{1, 2, 3})                            // [0.267, 0.535, 0.802]
+```c
+#include "lombokvector.h"
+float out;
+if (lombokvector_cosine_f32(a, b, n, &out) == LOMBOKVECTOR_OK) { /* ... */ }
 ```
 
-## API
+Build the library with `cargo rustc --release --features ffi --crate-type cdylib` in `rust/`; see [c-headers/examples/check.c](c-headers/examples/check.c).
 
-| Function | Description | Returns |
-|----------|-------------|---------|
-| `cosine_similarity(a, b)` | Cosine similarity | `f32` in [-1, 1] |
-| `dot_product(a, b)` | Dot product | `f32` |
-| `l2_distance(a, b)` | Euclidean distance | `f32` ≥ 0 |
-| `inner_product(a, b)` | Inner product (= dot product) | `f32` |
-| `l2_norm(a)` | Vector magnitude | `f32` ≥ 0 |
-| `normalize(a)` | Unit-length vector | `Vec<f32>` |
-| `vec_add(a, b)` | Element-wise addition | `Vec<f32>` |
-| `vec_sub(a, b)` | Element-wise subtraction | `Vec<f32>` |
-| `vec_mul_scalar(a, s)` | Scalar multiplication | `Vec<f32>` |
-| `batch_cosine(query, candidates)` | 1 query vs N vectors (cosine) | Sorted desc |
-| `batch_l2(query, candidates)` | 1 query vs N vectors (L2) | Sorted asc |
-| `distance_matrix_cosine(A, B)` | N×M cosine matrix | `Vec<Vec<f32>>` |
+## Ports
 
-All f32 functions have `_f64` variants.
+| | Rust | TypeScript | Python | Go | PHP | C |
+|---|---|---|---|---|---|---|
+| binary64 | YES | YES | YES | YES | YES | dot, l2, cosine |
+| binary32 | YES | – | – | YES | – | dot, l2, cosine, norm, normalize |
+| batch + matrix | YES | YES | YES | YES | YES | – |
+| SIMD | AVX2, NEON, simd128 | – | – | – | – | via Rust |
+| shared vectors | 223/223 | 113/113 | 113/113 | 223/223 | 113/113 | smoke test |
 
-## SIMD Backends
+## Known limitations
 
-| Backend | Arch | Width | Floats/iter | Feature Flag |
-|---------|------|-------|-------------|-------------|
-| AVX2 + FMA | x86_64 | 256-bit | 8×f32 | `avx2` |
-| AVX-512 (2×AVX2) | x86_64 | 512-bit | 16×f32 | `avx512` |
-| NEON | aarch64 | 128-bit | 4×f32 | `neon` |
-| WASM SIMD | wasm32 | 128-bit | 4×f32 | `wasm-simd` |
-| Portable | any | scalar | 1×f32 (4× unrolled) | `portable` |
+No approximate-nearest-neighbour index, no quantization, no distances beyond L2/dot/cosine. Very large elements overflow the sum of squares (`NON_FINITE`) because there is no rescaling. Only Rust and Go offer binary32. Details: [docs/full_summary_project_LombokVector_v0.2.0.md](docs/full_summary_project_LombokVector_v0.2.0.md#2-batasan-yang-diketahui).
 
-Default: `auto-detect` — runtime CPUID on x86_64, compile-time on ARM/WASM.
+## Upgrading from 0.1.0
 
-## Comparison
+0.2.0 changes numeric results in the last bits (new summation order), clamps cosine to [-1, 1], adds the `NON_FINITE` error, fixes the PHP port and the Rust `no_std` build, implements the C API, and moves the Go module to `github.com/codinglombok/lombokvector/go`. See [CHANGELOG.md](CHANGELOG.md).
 
-| Library | Language | SIMD | no_std | Zero-dep | Batch | Precision |
-|---------|----------|------|--------|----------|-------|-----------|
-| **LombokVector** | **Rust + 4 ports** | **AVX2/512/NEON/WASM** | **Yes** | **Yes** | **Yes** | **f32 + f64** |
-| faiss | C++/Python | AVX2/512 | No | No (BLAS) | Yes | f32 |
-| numpy | Python (C) | AVX2 | No | No (LAPACK) | Yes | f32/f64 |
-| simsimd | C/Python/Rust | AVX2/512/NEON/SVE | No | Yes | Yes | f16/f32 |
-| ndarray | Rust | via BLAS | No | No | Yes | f32/f64 |
+## Development
 
-## Performance Targets
-
-| Operation | Dimension | Target |
-|-----------|-----------|--------|
-| Cosine (1M vectors) | 768 | <5ms AVX2 |
-| Batch 1K queries × 1M | 768 | <5s |
-| WASM (100K vectors) | 768 | <50ms |
-
-## Test Vectors
-
-All ports share `vectors/lombokvector-vectors-v1.json`. Every language MUST produce identical results within tolerance (f32: ±1e-6, f64: ±1e-14).
+```bash
+cd rust && cargo test --features ffi && cargo clippy --all-targets --features ffi -- -D warnings
+cd typescript && npm ci && npm run coverage
+cd python && python -m pytest
+cd go && go test ./...
+cd php && php tests/run.php
+python3 vectors/build_vectors.py && bash scripts/lombok-doctor.sh LombokVector
+```
 
 ## License
 
-Apache-2.0 — see [LICENSE](LICENSE).
-
-## Part of Lombok Ecosystem
-
-```
-LombokRAGFrameworks (Tier 4 Hub)
-  └── LombokVector (this library — Layer 0: Core)
-  └── LombokHNSW (depends on LombokVector)
-  └── LombokQuantize (depends on LombokVector)
-  └── LombokColBERT (depends on LombokVector)
-  └── LombokEval (depends on LombokVector)
-  └── ...38 more libraries
-```
+Apache-2.0. See [LICENSE](LICENSE).

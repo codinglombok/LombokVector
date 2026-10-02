@@ -1,139 +1,147 @@
-// LombokVector — Batch operations (requires std)
-// License: Apache-2.0
+//! One query against many candidates, and all-pairs matrices (SPEC section 3.7-3.8).
 
+use alloc::vec::Vec;
+
+use crate::dispatch;
 use crate::error::VectorError;
-use crate::simd::dispatch;
+use crate::ops::{check_single, cos_value_f32, cos_value_f64, finite};
+use crate::sqrt::Sqrt;
 
-/// Compute cosine similarity of a query against N candidate vectors.
-/// Returns Vec of (index, similarity) sorted by descending similarity.
-pub fn batch_cosine(query: &[f32], candidates: &[&[f32]]) -> Result<Vec<(usize, f32)>, VectorError> {
-    if query.is_empty() {
-        return Err(VectorError::EmptyVector);
-    }
-    let q_norm = dispatch::sum_squares_f32(query).sqrt();
-    if q_norm == 0.0 {
-        return Err(VectorError::ZeroMagnitude);
-    }
-
-    let mut results: Vec<(usize, f32)> = Vec::with_capacity(candidates.len());
-
-    for (i, &cand) in candidates.iter().enumerate() {
-        if cand.len() != query.len() {
-            return Err(VectorError::DimensionMismatch {
-                expected: query.len(),
-                actual: cand.len(),
-            });
-        }
-        let dot = dispatch::dot_f32(query, cand);
-        let c_norm = dispatch::sum_squares_f32(cand).sqrt();
-        if c_norm == 0.0 {
-            results.push((i, 0.0));
+/// Sorts `(index, score)` pairs; the sort is stable, so equal scores keep index order.
+fn rank<T: PartialOrd + Copy>(mut v: Vec<(usize, T)>, descending: bool) -> Vec<(usize, T)> {
+    // scores are finite (checked by the callers), so partial_cmp never fails
+    v.sort_by(|x, y| {
+        let o = x.1.partial_cmp(&y.1).unwrap_or(core::cmp::Ordering::Equal);
+        if descending {
+            o.reverse()
         } else {
-            results.push((i, dot / (q_norm * c_norm)));
+            o
         }
-    }
-
-    results.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(core::cmp::Ordering::Equal));
-    Ok(results)
+    });
+    v
 }
 
-/// Compute dot product of a query against N candidate vectors.
-pub fn batch_dot(query: &[f32], candidates: &[&[f32]]) -> Result<Vec<(usize, f32)>, VectorError> {
-    if query.is_empty() {
-        return Err(VectorError::EmptyVector);
+fn check_candidate(query: usize, cand: usize) -> Result<(), VectorError> {
+    if cand != query {
+        return Err(VectorError::DimensionMismatch {
+            expected: query,
+            actual: cand,
+        });
     }
-
-    let mut results: Vec<(usize, f32)> = Vec::with_capacity(candidates.len());
-
-    for (i, &cand) in candidates.iter().enumerate() {
-        if cand.len() != query.len() {
-            return Err(VectorError::DimensionMismatch {
-                expected: query.len(),
-                actual: cand.len(),
-            });
-        }
-        results.push((i, dispatch::dot_f32(query, cand)));
-    }
-
-    results.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(core::cmp::Ordering::Equal));
-    Ok(results)
+    Ok(())
 }
 
-/// Compute L2 distance of a query against N candidate vectors.
-/// Returns Vec of (index, distance) sorted by ascending distance.
-pub fn batch_l2(query: &[f32], candidates: &[&[f32]]) -> Result<Vec<(usize, f32)>, VectorError> {
-    if query.is_empty() {
-        return Err(VectorError::EmptyVector);
-    }
-
-    let mut results: Vec<(usize, f32)> = Vec::with_capacity(candidates.len());
-
-    for (i, &cand) in candidates.iter().enumerate() {
-        if cand.len() != query.len() {
-            return Err(VectorError::DimensionMismatch {
-                expected: query.len(),
-                actual: cand.len(),
-            });
-        }
-        results.push((i, dispatch::l2_sq_f32(query, cand).sqrt()));
-    }
-
-    results.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(core::cmp::Ordering::Equal));
-    Ok(results)
-}
-
-/// Compute N×M cosine similarity distance matrix.
-/// `matrix[i][j]` = cosine_similarity(vectors_a[i], vectors_b[j])
-pub fn distance_matrix_cosine(
-    vectors_a: &[&[f32]],
-    vectors_b: &[&[f32]],
-) -> Result<Vec<Vec<f32>>, VectorError> {
-    if vectors_a.is_empty() || vectors_b.is_empty() {
-        return Err(VectorError::EmptyVector);
-    }
-
-    let dim = vectors_a[0].len();
-    if dim == 0 {
-        return Err(VectorError::EmptyVector);
-    }
-
-    // Pre-compute norms
-    let norms_a: Vec<f32> = vectors_a
-        .iter()
-        .map(|v| dispatch::sum_squares_f32(v).sqrt())
-        .collect();
-    let norms_b: Vec<f32> = vectors_b
-        .iter()
-        .map(|v| dispatch::sum_squares_f32(v).sqrt())
-        .collect();
-
-    let mut matrix = Vec::with_capacity(vectors_a.len());
-
-    for (i, &va) in vectors_a.iter().enumerate() {
-        if va.len() != dim {
-            return Err(VectorError::DimensionMismatch {
-                expected: dim,
-                actual: va.len(),
-            });
-        }
-        let mut row = Vec::with_capacity(vectors_b.len());
-        for (j, &vb) in vectors_b.iter().enumerate() {
-            if vb.len() != dim {
-                return Err(VectorError::DimensionMismatch {
-                    expected: dim,
-                    actual: vb.len(),
-                });
+macro_rules! batch {
+    (
+        $t:ty, $dotk:ident, $sumsqk:ident, $l2sqk:ident, $cosv:ident,
+        $bcos:ident, $bdot:ident, $bl2:ident, $mat:ident
+    ) => {
+        /// Cosine similarity of `query` with each candidate, sorted by descending
+        /// score (ties keep index order). A zero-magnitude candidate scores 0.
+        ///
+        /// # Errors
+        /// `EmptyVector` (query), `ZeroMagnitude` (query), `DimensionMismatch`, `NonFinite`.
+        pub fn $bcos(query: &[$t], candidates: &[&[$t]]) -> Result<Vec<(usize, $t)>, VectorError> {
+            check_single(query.len())?;
+            let qn = finite!(dispatch::$sumsqk(query).sqrt_())?;
+            if qn == 0.0 {
+                return Err(VectorError::ZeroMagnitude);
             }
-            let dot = dispatch::dot_f32(va, vb);
-            let denom = norms_a[i] * norms_b[j];
-            if denom == 0.0 {
-                row.push(0.0);
-            } else {
-                row.push(dot / denom);
+            let mut out = Vec::with_capacity(candidates.len());
+            for (i, c) in candidates.iter().enumerate() {
+                check_candidate(query.len(), c.len())?;
+                let d = finite!(dispatch::$dotk(query, c))?;
+                let cn = finite!(dispatch::$sumsqk(c).sqrt_())?;
+                out.push((i, if cn == 0.0 { 0.0 } else { $cosv(d, qn, cn)? }));
             }
+            Ok(rank(out, true))
         }
-        matrix.push(row);
-    }
 
-    Ok(matrix)
+        /// Dot product of `query` with each candidate, sorted by descending score.
+        ///
+        /// # Errors
+        /// `EmptyVector`, `DimensionMismatch`, `NonFinite`.
+        pub fn $bdot(query: &[$t], candidates: &[&[$t]]) -> Result<Vec<(usize, $t)>, VectorError> {
+            check_single(query.len())?;
+            let mut out = Vec::with_capacity(candidates.len());
+            for (i, c) in candidates.iter().enumerate() {
+                check_candidate(query.len(), c.len())?;
+                out.push((i, finite!(dispatch::$dotk(query, c))?));
+            }
+            Ok(rank(out, true))
+        }
+
+        /// Euclidean distance from `query` to each candidate, sorted ascending.
+        ///
+        /// # Errors
+        /// `EmptyVector`, `DimensionMismatch`, `NonFinite`.
+        pub fn $bl2(query: &[$t], candidates: &[&[$t]]) -> Result<Vec<(usize, $t)>, VectorError> {
+            check_single(query.len())?;
+            let mut out = Vec::with_capacity(candidates.len());
+            for (i, c) in candidates.iter().enumerate() {
+                check_candidate(query.len(), c.len())?;
+                out.push((i, finite!(dispatch::$l2sqk(query, c).sqrt_())?));
+            }
+            Ok(rank(out, false))
+        }
+
+        /// `out[i][j]` = cosine similarity of `a[i]` and `b[j]`; 0 when either has
+        /// magnitude zero. Every vector must have the length of `a[0]`.
+        ///
+        /// # Errors
+        /// `EmptyVector` (empty set or `a[0]` empty), `DimensionMismatch`, `NonFinite`.
+        pub fn $mat(a: &[&[$t]], b: &[&[$t]]) -> Result<Vec<Vec<$t>>, VectorError> {
+            if a.is_empty() || b.is_empty() {
+                return Err(VectorError::EmptyVector);
+            }
+            let dim = a[0].len();
+            check_single(dim)?;
+            for v in a.iter().chain(b) {
+                check_candidate(dim, v.len())?;
+            }
+            let norms = |set: &[&[$t]]| -> Result<Vec<$t>, VectorError> {
+                set.iter()
+                    .map(|v| finite!(dispatch::$sumsqk(v).sqrt_()))
+                    .collect()
+            };
+            let (na, nb) = (norms(a)?, norms(b)?);
+            let mut out = Vec::with_capacity(a.len());
+            for (i, va) in a.iter().enumerate() {
+                let mut row = Vec::with_capacity(b.len());
+                for (j, vb) in b.iter().enumerate() {
+                    let d = finite!(dispatch::$dotk(va, vb))?;
+                    row.push(if na[i] == 0.0 || nb[j] == 0.0 {
+                        0.0
+                    } else {
+                        $cosv(d, na[i], nb[j])?
+                    });
+                }
+                out.push(row);
+            }
+            Ok(out)
+        }
+    };
 }
+
+batch!(
+    f32,
+    dot_f32,
+    sumsq_f32,
+    l2sq_f32,
+    cos_value_f32,
+    batch_cosine,
+    batch_dot,
+    batch_l2,
+    distance_matrix_cosine
+);
+batch!(
+    f64,
+    dot_f64,
+    sumsq_f64,
+    l2sq_f64,
+    cos_value_f64,
+    batch_cosine_f64,
+    batch_dot_f64,
+    batch_l2_f64,
+    distance_matrix_cosine_f64
+);
