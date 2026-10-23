@@ -56,9 +56,9 @@ typescript/build/
 rust/Cargo.lock
 
 # ===== Lombok Ecosystem — dokumen internal (tidak di-commit) =====
-Map_*.md
-SPEC_*.md
-Stucture Repo_*.md
-TECH DEBT_*.md
-Architecture_*.md
-Masterplan_*.md
+/Map_*.md
+/SPEC_*.md
+/Stucture Repo_*.md
+/TECH DEBT_*.md
+/Architecture_*.md
+/Masterplan_*.md

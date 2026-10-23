@@ -9,6 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Container release channel: root `Dockerfile` (multi-stage; builds the C FFI
+  shared library with `--features ffi` and ships it in `debian:bookworm-slim`
+  with `lombokvector.h` and a self-verifying smoke test as the entrypoint),
+  `.dockerignore`, `.github/workflows/release-docker.yml` (staged dispatch,
+  `dry_run` default `true`, fail-closed tag guard), a `docker` job in
+  `release.yml`, and a build-plus-smoke job in `ci.yml`. Images are published
+  to `ghcr.io/codinglombok/lombokvector` (multi-arch amd64/arm64); Docker Hub
+  is pushed too when `DOCKERHUB_USERNAME`/`DOCKERHUB_TOKEN` secrets exist.
+- `publishConfig` (`access: public`, `provenance: true`) in
+  `typescript/package.json`, so a local `npm publish` behaves exactly like
+  the CI publish.
+
 ## [0.1.0] — 2026-10-23
 
 First version published to any registry (npm, crates.io, PyPI, GitHub

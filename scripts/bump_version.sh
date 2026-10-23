@@ -51,7 +51,8 @@ for f in README.md go/README.md php/README.md python/README.md rust/README.md \
   [ -e "$f" ] && sed -i "s/v${OLD}/v${NEW}/g" "$f"
 done
 sed -i "s/e\.g\. v${OLD}/e.g. v${NEW}/g" .github/workflows/release-npm.yml \
-  .github/workflows/release-crates.yml .github/workflows/release-pypi.yml
+  .github/workflows/release-crates.yml .github/workflows/release-pypi.yml \
+  .github/workflows/release-docker.yml
 
 echo
 echo "Mechanical bump done. Remaining human steps:"
