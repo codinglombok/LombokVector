@@ -1,0 +1,24 @@
+{
+    "name": "codinglombok/lombokvector",
+    "description": "Vector math with bit-identical results across PHP, Rust, TypeScript, Python and Go: dot product, cosine similarity, L2 distance, normalization, batch ranking. Zero dependencies.",
+    "type": "library",
+    "license": "Apache-2.0",
+    "keywords": ["vector", "cosine-similarity", "embedding", "deterministic", "lombok-ecosystem"],
+    "homepage": "https://github.com/codinglombok/LombokVector",
+    "authors": [{ "name": "codinglombok" }],
+    "require": {
+        "php": ">=8.1"
+    },
+    "support": {
+        "issues": "https://github.com/codinglombok/LombokVector/issues",
+        "source": "https://github.com/codinglombok/LombokVector"
+    },
+    "autoload": {
+        "psr-4": {
+            "CodingLombok\\LombokVector\\": "php/src/"
+        }
+    },
+    "scripts": {
+        "test": "php php/tests/run.php"
+    }
+}

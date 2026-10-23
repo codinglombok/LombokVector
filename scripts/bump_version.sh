@@ -31,7 +31,7 @@ echo "bump: $OLD -> $NEW"
 
 # 1. manifests and code-level version markers
 sed -i "s/\"version\": *\"${OLD}\"/\"version\": \"${NEW}\"/" typescript/package.json
-sed -i "s/\"version\": *\"${OLD}\"/\"version\": \"${NEW}\"/g" typescript/package-lock.json
+sed -i "s/\"version\": *\"${OLD}\"/\"version\": \"${NEW}\"/g" typescript/package-lock.json package-lock.json
 sed -i "s/^version = \"${OLD}\"/version = \"${NEW}\"/" rust/Cargo.toml python/pyproject.toml
 sed -i "s/__version__ = \"${OLD}\"/__version__ = \"${NEW}\"/" python/lombokvector/__init__.py
 sed -i "s/lv\.__version__ == \"${OLD}\"/lv.__version__ == \"${NEW}\"/" python/tests/test_api.py

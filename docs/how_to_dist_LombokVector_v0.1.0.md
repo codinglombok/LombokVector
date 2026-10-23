@@ -8,7 +8,7 @@
 | npm | `lombokvector` | belum terbit | job `npm`, `npm publish --provenance` dari `typescript/`, rahasia `NPM_TOKEN` |
 | PyPI | `lombokvector` | belum terbit | job `pypi`, build `python/`, trusted publishing (OIDC) |
 | Go | `github.com/codinglombok/lombokvector/go` | tag saat rilis | tag tambahan `go/v<versi>` (modul di subdirektori) |
-| Packagist | `codinglombok/lombokvector` | belum dapat terbit | Packagist membaca `composer.json` di root repositori; butuh repositori split (`LombokVector-php`) yang disinkronkan dari `php/`, atau `composer.json` root yang menunjuk `php/src` |
+| Packagist | `codinglombok/lombokvector` | siap submit | `composer.json` ROOT menunjuk `php/src` (Packagist hanya membaca root branch utama — subdirektori tidak terbaca); submit sekali di `packagist.org/packages/submit`, setelah itu sinkron otomatis mengikuti tag `v*` |
 | C | `lombokvector.h` + `liblombokvector` | lampiran GitHub Release (rencana) | `cargo rustc --release --features ffi --crate-type cdylib` / `staticlib` per platform |
 
 ## 2. Alur rilis

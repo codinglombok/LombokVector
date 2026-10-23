@@ -53,6 +53,14 @@ repository implements the standard with:
    there too; without them the Docker Hub steps are skipped automatically.
    The image is `ghcr.io/codinglombok/lombokvector` — the C FFI shared
    library, its header, and a self-verifying smoke test as the entrypoint.
+4. Packagist (PHP): one-time manual submission at
+   <https://packagist.org/packages/submit> — paste
+   `https://github.com/codinglombok/LombokVector` and submit. This only works
+   after `main` is pushed: Packagist reads the root `composer.json` of the
+   default branch (a `composer.json` inside `php/` is invisible to it, which
+   is why the manifest lives at the repo root and points at `php/src`).
+   Versions come from the `v*` tags; after the first submission Packagist
+   auto-syncs on every push (no workflow, no secret).
 
 ## 3. Stage 1 — release v0.1.0 (first public release)
 

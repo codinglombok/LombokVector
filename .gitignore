@@ -4,6 +4,7 @@ rust/target/
 
 # TypeScript / Node
 typescript/node_modules/
+node_modules/
 typescript/dist/
 typescript/*.tgz
 

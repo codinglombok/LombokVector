@@ -22,6 +22,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `publishConfig` (`access: public`, `provenance: true`) in
   `typescript/package.json`, so a local `npm publish` behaves exactly like
   the CI publish.
+- Root `composer.json` (moved from `php/`, paths adjusted: `psr-4` -> `php/src/`,
+  `composer test` -> `php php/tests/run.php`) so Packagist — which only reads
+  the root `composer.json` of the default branch — can index the package
+  `codinglombok/lombokvector` after a one-time submission.
+- Root `package.json` (private npm workspace pointing at `typescript/`) and
+  root `package-lock.json` for one-command workspace installs; the publishable
+  package and its lockfile stay in `typescript/` (CI flows unchanged).
 
 ## [0.1.0] — 2026-10-23
 
