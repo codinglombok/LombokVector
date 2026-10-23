@@ -7,7 +7,7 @@ namespace CodingLombok\LombokVector;
 /**
  * Binary64 vector math whose results are bit-identical to the Rust,
  * TypeScript, Python and Go ports. Every sum uses the 8-lane order of
- * docs/SPEC_LombokVector_v0.2.0.md section 2. Elements may be int or float;
+ * docs/SPEC_LombokVector_v0.1.0.md section 2. Elements may be int or float;
  * they are converted to float before any arithmetic.
  */
 final class LombokVector

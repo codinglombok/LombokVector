@@ -11,7 +11,7 @@ Part of the [Lombok Ecosystem](https://github.com/codinglombok).
 
 ## Mengapa library ini? (Why this library?)
 
-- **Bit-identical across languages.** Floating-point sums depend on their order. LombokVector fixes the order (8 lanes, separate rounding, no fused multiply-add; [SPEC section 2](docs/SPEC_LombokVector_v0.2.0.md#2-reduksi-8-lajur-inti-kontrak)), so a score computed in a Python batch job, a Go service, and a TypeScript browser app is exactly the same number. All ports check 223 shared cases bit for bit in CI.
+- **Bit-identical across languages.** Floating-point sums depend on their order. LombokVector fixes the order (8 lanes, separate rounding, no fused multiply-add; [SPEC section 2](docs/SPEC_LombokVector_v0.1.0.md#2-reduksi-8-lajur-inti-kontrak)), so a score computed in a Python batch job, a Go service, and a TypeScript browser app is exactly the same number. All ports check 223 shared cases bit for bit in CI.
 - **SIMD that does not change answers.** The Rust AVX2 (x86), NEON (aarch64), and simd128 (wasm32) kernels follow the same order as the scalar code, and a test compares them on every build. Measured: AVX2 dot product of 768 binary32 values in about 56 ns versus 72 ns for the scalar kernel on one x86_64 machine (the scalar code is already auto-vectorized), so expect a modest speed-up rather than a large one.
 - **Explicit failure modes.** Empty input, length mismatch, zero magnitude, and overflow or non-finite input (`NON_FINITE`) are errors with the same code in every language, instead of silent NaN.
 - **Runs small.** Rust `no_std` without an allocator (embedded), with a correctly rounded software square root, plus a C API. Pure TypeScript, Python, Go, and PHP with no dependencies.
@@ -23,7 +23,7 @@ Part of the [Lombok Ecosystem](https://github.com/codinglombok).
 | Rust | `lombokvector` (crates.io) | not yet published |
 | TypeScript / JavaScript | `lombokvector` (npm) | not yet published |
 | Python | `lombokvector` (PyPI) | not yet published |
-| Go | `github.com/codinglombok/lombokvector/go` | tag `go/v0.2.0` on release |
+| Go | `github.com/codinglombok/lombokvector/go` | tag `go/v0.1.0` on release |
 | PHP | `codinglombok/lombokvector` (Packagist) | needs a split repository first |
 | C | `c-headers/lombokvector.h` + library built from `rust/` | build from source |
 
@@ -102,11 +102,17 @@ Build the library with `cargo rustc --release --features ffi --crate-type cdylib
 
 ## Known limitations
 
-No approximate-nearest-neighbour index, no quantization, no distances beyond L2/dot/cosine. Very large elements overflow the sum of squares (`NON_FINITE`) because there is no rescaling. Only Rust and Go offer binary32. Details: [docs/full_summary_project_LombokVector_v0.2.0.md](docs/full_summary_project_LombokVector_v0.2.0.md#2-batasan-yang-diketahui).
+No approximate-nearest-neighbour index, no quantization, no distances beyond L2/dot/cosine. Very large elements overflow the sum of squares (`NON_FINITE`) because there is no rescaling. Only Rust and Go offer binary32. Details: [docs/full_summary_project_LombokVector_v0.1.0.md](docs/full_summary_project_LombokVector_v0.1.0.md#2-batasan-yang-diketahui).
 
-## Upgrading from 0.1.0
+## Versioning
 
-0.2.0 changes numeric results in the last bits (new summation order), clamps cosine to [-1, 1], adds the `NON_FINITE` error, fixes the PHP port and the Rust `no_std` build, implements the C API, and moves the Go module to `github.com/codinglombok/lombokvector/go`. See [CHANGELOG.md](CHANGELOG.md).
+The published version ladder starts at **0.1.0** (this release) and proceeds
+in staged steps: `v0.1.0` -> `v0.2.0` -> `v0.3.0` -> ... . 0.1.0 consolidates
+the two earlier unpublished internal drafts (2026-09-22 and 2026-10-02), so
+no published version number was skipped. Registry versions are immutable:
+fixes always ship as new versions and tags are never moved. The full staged
+release procedure — per-registry workflows, approval gates, verification,
+version bumps — is in [docs/RELEASE_RUNBOOK.md](docs/RELEASE_RUNBOOK.md).
 
 ## Development
 

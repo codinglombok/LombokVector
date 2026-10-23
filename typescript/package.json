@@ -1,6 +1,6 @@
 {
   "name": "lombokvector",
-  "version": "0.2.0",
+  "version": "0.1.0",
   "description": "Vector math with bit-identical results across TypeScript, Rust, Python, Go and PHP: dot product, cosine similarity, L2 distance, normalization, batch ranking. Zero dependencies. Part of the Lombok Ecosystem.",
   "keywords": ["vector", "cosine-similarity", "dot-product", "embedding", "deterministic", "zero-dependency", "lombok-ecosystem"],
   "homepage": "https://github.com/codinglombok/LombokVector",

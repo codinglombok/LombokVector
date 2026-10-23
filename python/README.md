@@ -6,6 +6,6 @@ Python package `lombokvector` (binary64, Python 3.9+, pure Python): dot product,
 pip install lombokvector
 ```
 
-The summation order and every operation are defined in [docs/SPEC_LombokVector_v0.2.0.md](https://github.com/codinglombok/LombokVector/blob/main/docs/SPEC_LombokVector_v0.2.0.md); this port reproduces the shared vector file bit for bit in CI. Usage for all languages: [main README](https://github.com/codinglombok/LombokVector#readme) and [docs/API_LombokVector_v0.2.0.md](https://github.com/codinglombok/LombokVector/blob/main/docs/API_LombokVector_v0.2.0.md).
+The summation order and every operation are defined in [docs/SPEC_LombokVector_v0.1.0.md](https://github.com/codinglombok/LombokVector/blob/main/docs/SPEC_LombokVector_v0.1.0.md); this port reproduces the shared vector file bit for bit in CI. Usage for all languages: [main README](https://github.com/codinglombok/LombokVector#readme) and [docs/API_LombokVector_v0.1.0.md](https://github.com/codinglombok/LombokVector/blob/main/docs/API_LombokVector_v0.1.0.md).
 
 License: Apache-2.0.

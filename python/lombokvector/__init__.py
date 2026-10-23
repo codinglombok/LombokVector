@@ -1,6 +1,6 @@
 """LombokVector for Python: binary64 vector math whose results are
 bit-identical to the Rust, TypeScript, Go and PHP ports. Every sum uses the
-8-lane order of docs/SPEC_LombokVector_v0.2.0.md section 2. Pure Python,
+8-lane order of docs/SPEC_LombokVector_v0.1.0.md section 2. Pure Python,
 no dependencies."""
 
 from __future__ import annotations
@@ -8,7 +8,7 @@ from __future__ import annotations
 import math
 from typing import List, NamedTuple, Sequence
 
-__version__ = "0.2.0"
+__version__ = "0.1.0"
 __all__ = [
     "ScoredIndex",
     "VectorError",

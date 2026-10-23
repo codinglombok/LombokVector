@@ -2,7 +2,7 @@
 // to the Rust, TypeScript, Python and PHP ports of LombokVector: dot product,
 // cosine similarity, Euclidean distance, normalisation, and batch ranking.
 //
-// Every sum uses the 8-lane order of docs/SPEC_LombokVector_v0.2.0.md
+// Every sum uses the 8-lane order of docs/SPEC_LombokVector_v0.1.0.md
 // section 2. Products are converted explicitly (T(x*y)) before they are
 // added, which the Go specification defines as rounding to the target type
 // and which prevents the compiler from fusing them into a multiply-add.

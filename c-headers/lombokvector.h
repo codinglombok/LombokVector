@@ -9,7 +9,7 @@
  *     cargo rustc --release --features ffi --crate-type staticlib  (static)
  *
  * Results are bit-identical to the other LombokVector ports
- * (docs/SPEC_LombokVector_v0.2.0.md).
+ * (docs/SPEC_LombokVector_v0.1.0.md).
  *
  * License: Apache-2.0
  */

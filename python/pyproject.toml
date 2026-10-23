@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "lombokvector"
-version = "0.2.0"
+version = "0.1.0"
 description = "Vector math with bit-identical results across Python, Rust, TypeScript, Go and PHP: dot product, cosine similarity, L2 distance, normalization, batch ranking. Pure Python, zero dependencies."
 readme = "README.md"
 license = "Apache-2.0"

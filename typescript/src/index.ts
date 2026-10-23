@@ -1,7 +1,7 @@
 /**
  * LombokVector for TypeScript/JavaScript: binary64 vector math whose results
  * are bit-identical to the Rust, Python, Go and PHP ports. Every sum uses the
- * 8-lane order of docs/SPEC_LombokVector_v0.2.0.md section 2.
+ * 8-lane order of docs/SPEC_LombokVector_v0.1.0.md section 2.
  */
 
 /** Error codes shared by every port (SPEC section 4). */

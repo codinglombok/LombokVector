@@ -65,4 +65,4 @@ def test_batch_ranking():
     assert lv.batch_l2([0, 0], [[3, 4], [1, 0], [0, 1]]) == [(1, 1.0), (2, 1.0), (0, 5.0)]
     assert [x.index for x in lv.batch_cosine([1, 1], [[0, 0], [1, 1]])] == [1, 0]
     assert lv.distance_matrix_cosine([[1, 0], [0, 0]], [[1, 0]]) == [[1.0], [0.0]]
-    assert lv.__version__ == "0.2.0"
+    assert lv.__version__ == "0.1.0"

@@ -24,6 +24,7 @@ jobs:
 
   crates:
     needs: check-version
+    environment: crates
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -40,6 +41,7 @@ jobs:
 
   npm:
     needs: check-version
+    environment: npm
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -80,3 +82,55 @@ jobs:
       - uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
         with:
           packages-dir: python/dist
+
+  go-tag:
+    # Go modules are versioned with git tags; subdirectory modules need the
+    # extra go/v<version> tag. Idempotent: skipped when the tag already exists.
+    needs: check-version
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Push the go/v* module tag (skip when it already exists)
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          VERSION="$(sed -n 's/.*"version": *"\([^"]*\)".*/\1/p' typescript/package.json | head -1)"
+          TAG="go/v${VERSION}"
+          if git ls-remote --exit-code --tags origin "refs/tags/${TAG}" >/dev/null 2>&1; then
+            echo "tag ${TAG} already exists; skipping"
+            exit 0
+          fi
+          git tag -a "${TAG}" -m "LombokVector Go module v${VERSION} (github.com/codinglombok/lombokvector/go)"
+          git push origin "${TAG}"
+
+  github-release:
+    # Creates the GitHub Release with a checksummed source bundle. The bundle
+    # is built with git archive, so it contains tracked files only (internal
+    # documents stay out, ADR-024).
+    needs: [check-version, go-tag]
+    runs-on: ubuntu-latest
+    environment: github-release
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Build the public source bundle (tracked files only)
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          git archive --format=zip --prefix="LombokVector_${VERSION}/" \
+            -o "${RUNNER_TEMP}/LombokVector_${VERSION}_bundle.zip" HEAD
+          cd "${RUNNER_TEMP}"
+          sha256sum "LombokVector_${VERSION}_bundle.zip" > SHA256SUMS
+          sha256sum -c SHA256SUMS
+      - name: Create the GitHub Release and upload artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          gh release create "${GITHUB_REF_NAME}" \
+            --title "LombokVector ${VERSION}" \
+            --generate-notes \
+            "${RUNNER_TEMP}/LombokVector_${VERSION}_bundle.zip" \
+            "${RUNNER_TEMP}/SHA256SUMS"
