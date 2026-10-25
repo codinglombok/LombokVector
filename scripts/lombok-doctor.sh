@@ -58,6 +58,16 @@ done
 for c in composer.json php/composer.json; do
   [ -f "$c" ] && grep -q '"version"' "$c" && err "$c memuat field version (Packagist mengambil versi dari tag)"
 done
+# manifest PHP harus tunggal di root (Packagist hanya membaca composer.json root)
+[ -f php/composer.json ] && err "php/composer.json masih ada - manifest PHP sudah pindah ke root composer.json"
+# dokumen versi lain tidak boleh ikut ter-commit (relapse: salinan *_v<versi-lama>.md hidup kembali)
+for f in docs/*_LombokVector_v*.md; do
+  [ -e "$f" ] || continue
+  case "$f" in
+    *_v${VER}.md) ;;
+    *) err "dokumen versi lain ter-commit: $f (harus *_v${VER}.md)" ;;
+  esac
+done
 
 # ---------------------------------------------------------------- docs
 PUBLIC="changelog map structure_repo full_summary_project guide_how_to_use how_to_dist development_ide API Lang SPEC"

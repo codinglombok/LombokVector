@@ -9,6 +9,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- The `Release` and `Release docker` workflows were invalid: the `secrets`
+  context is not allowed inside `if:` conditionals (`Unrecognized named-value:
+  'secrets'`), so GitHub rejected the files and, unable to parse their
+  triggers, ran them on every push to `main`. Docker Hub presence is now
+  detected in a dedicated step (secrets read into the step `env`) and the
+  conditional steps check `steps.dh.outputs.available` instead.
+
+### Changed
+
+- `lombok-doctor.sh` now fails when `php/composer.json` exists (the manifest
+  moved to the root) or when any `docs/*_LombokVector_v<other>.md` copy is
+  committed, so a staging-flow relapse of stale versioned documents fails CI
+  instead of passing silently.
+
 ### Added
 
 - Container release channel: root `Dockerfile` (multi-stage; builds the C FFI
