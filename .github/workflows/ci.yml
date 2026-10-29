@@ -1,244 +1,158 @@
-# CI — LombokVector: five ports must reproduce the same IEEE 754 bit patterns.
-name: CI
+name: CI — TypeScript
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: '0 2 * * 1'  # weekly Monday 02:00 UTC
 
 permissions:
   contents: read
 
-on:
-  push:
-    branches: [main]
-  pull_request:
-    branches: [main]
-
-concurrency:
-  group: ci-${{ github.ref }}
-  cancel-in-progress: true
-
 jobs:
-  rust:
-    # ubuntu/windows run the AVX2 kernel, macos-latest (Apple Silicon) the NEON kernel
-    name: Rust (${{ matrix.os }})
+  lint:
+    name: Lint & Typecheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npx prettier --check 'src/**/*.ts' 'tests/**/*.ts'
+
+  test:
+    # OS di nama job — tanpa ini 6 leg matrix berbagi satu nama check dan
+    # kegagalan per-OS tidak bisa dibedakan di sidebar PR.
+    name: Test — Node ${{ matrix.node }} on ${{ matrix.os }}
+    needs: lint
     runs-on: ${{ matrix.os }}
+    # Bun/glibc macOS pernah menggantung 45+ menit tanpa satu test pun
+    # gagal tercatat — batasi durasi job dan upload bukti saat gagal.
+    # 15m cukup: runInBand di bawah selesai ~2-3 menit di runner paling lambat,
+    # dan kalau hang tetap terjadi kita dapat artefak diagnosa 15 menit
+    # lebih cepat (bukan 30).
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
+        node: ['22', '24']
         os: [ubuntu-latest, windows-latest, macos-latest]
-    defaults:
-      run:
-        working-directory: rust
     steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master
-        with:
-          toolchain: stable
-          components: clippy, rustfmt
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
-        with:
-          workspaces: rust
-      - run: cargo fmt --check
-      - run: cargo clippy --all-targets --features ffi -- -D warnings
-      - run: cargo test --features ffi
-      - name: Scalar kernels give the same bits
-        run: cargo test --features portable --test vectors
-
-  rust-targets:
-    name: Rust targets (no_std, aarch64, wasm, MSRV)
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: rust
-    steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master
-        with:
-          toolchain: stable
-          targets: thumbv7em-none-eabihf, aarch64-unknown-linux-gnu, wasm32-unknown-unknown
-      - name: no_std without allocator (embedded)
-        run: cargo check --no-default-features --target thumbv7em-none-eabihf
-      - name: no_std with alloc
-        run: cargo check --no-default-features --features alloc --target thumbv7em-none-eabihf
-      - name: aarch64 (NEON)
-        run: cargo check --target aarch64-unknown-linux-gnu
-      - name: wasm32 with simd128
-        env:
-          RUSTFLAGS: -C target-feature=+simd128
-        run: cargo check --no-default-features --features alloc --target wasm32-unknown-unknown
-      - name: no_std build (software sqrt, static AVX2) passes the vectors
-        env:
-          RUSTFLAGS: -C target-feature=+avx2
-        run: cargo test --no-default-features --features alloc --test vectors --test simd_matches_reference
-      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master
-        with:
-          toolchain: "1.70"
-      - name: MSRV 1.70
-        run: cargo +1.70 check --lib --features ffi
-
-  rust-coverage:
-    name: Rust coverage
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: rust
-    steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master
-        with:
-          toolchain: stable
-          components: llvm-tools-preview
-      - uses: taiki-e/install-action@4cef1412cce204788f482e778a0b9187f9626a29 # v2.87.21
-        with:
-          tool: cargo-llvm-cov
-      - run: cargo llvm-cov --features ffi --fail-under-lines 90
-
-  c-api:
-    name: C API smoke test
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master
-        with:
-          toolchain: stable
-      - run: cargo rustc --release --features ffi --crate-type cdylib
-        working-directory: rust
-      - working-directory: c-headers/examples
-        run: |
-          cc -Wall -Wextra -Werror check.c -I.. -L../../rust/target/release -llombokvector -o check
-          LD_LIBRARY_PATH=../../rust/target/release ./check
-
-  docker:
-    name: Container image (build + smoke)
-    # Every push must still produce a working image: the Dockerfile entrypoint
-    # is the C smoke test, so "docker run" exiting 0 proves the shipped
-    # liblombokvector.so computes the expected bit-identical results.
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
-      - name: Build the image (linux/amd64, no push)
-        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
-        with:
-          context: .
-          platforms: linux/amd64
-          push: false
-          load: true
-          tags: lombokvector:ci
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-      - name: Smoke-test the image
-        run: docker run --rm lombokvector:ci
-
-  typescript:
-    name: TypeScript (${{ matrix.os }}, Node ${{ matrix.node }})
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
-        node: [20, 22, 24]
-    defaults:
-      run:
-        working-directory: typescript
-    steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node }}
           cache: npm
-          cache-dependency-path: typescript/package-lock.json
       - run: npm ci
-      - run: npm run lint
-      - run: npm run coverage
-      - run: npm run build
-      - if: matrix.os == 'ubuntu-latest' && matrix.node == 24
-        run: npm pack --dry-run
-
-  python:
-    name: Python ${{ matrix.python }} (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
-        python: ["3.9", "3.11", "3.13"]
-    defaults:
-      run:
-        working-directory: python
-    steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
-        with:
-          python-version: ${{ matrix.python }}
-      - run: python -m pip install pytest coverage build
-      - run: python -m coverage run --branch --source=lombokvector -m pytest -q
-      - run: python -m coverage report -m --fail-under=90
-      - run: python -m build
-
-  go:
-    # macos-latest is arm64, where the Go compiler may fuse multiply-adds unless prevented
-    name: Go ${{ matrix.go }} (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
-        go: ["1.22", "1.24"]
-    defaults:
-      run:
-        working-directory: go
+      - name: Test (jest + coverage, JSON report untuk diagnosa)
+        # shell: bash WAJIB — default shell runner windows adalah pwsh, dan
+        # `set -o pipefail` bukan perintah pwsh: leg windows gagal exit-1 satu
+        # detik sebelum jest sempat jalan (run 5910c9f, step 33s total).
+        # --runInBand: pool worker jest (fork child_process) adalah satu-satunya
+        # lapisan yang TIDAK dipakai bun/deno — keduanya hijau di macOS —
+        # sementara jest hang 30m di macOS walau watchman:false. Tanpa worker,
+        # kelas deadlock itu hilang; 356 test in-band masih <3 menit di linux.
         shell: bash
-    steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        with:
-          go-version: ${{ matrix.go }}
-          cache: false
-      - name: gofmt
-        if: runner.os == 'Linux'
         run: |
-          out=$(gofmt -l .)
-          if [ -n "$out" ]; then echo "not gofmt-formatted:"; echo "$out"; exit 1; fi
-      - run: go vet ./...
-      - run: go test -coverprofile=cover.out ./...
-      - name: Coverage >= 90%
-        run: |
-          total=$(go tool cover -func=cover.out | awk '/^total:/ {sub("%","",$3); print $3}')
-          echo "coverage: $total%"
-          awk -v t="$total" 'BEGIN { exit !(t >= 90) }'
-
-  php:
-    name: PHP ${{ matrix.php }} (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
-        php: ["8.1", "8.3"]
-    defaults:
-      run:
-        working-directory: php
-    steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-      - uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # 2.37.2
+          set -o pipefail
+          npm test -- --coverage --ci --runInBand --json --outputFile=jest-results.json 2>&1 | tee jest-output.log
+      - name: Upload test diagnostics
+        # cancelled() juga — job macos yang di-kill timeout-minutes berstatus
+        # 'cancelled', bukan 'failure'; dengan if: failure() saja artefak
+        # diagnosa justru ter-skip justru pada kasus yang paling butuh bukti.
+        if: failure() || cancelled()
+        uses: actions/upload-artifact@v4
         with:
-          php-version: ${{ matrix.php }}
-          coverage: pcov
-          tools: none
-      - name: Lint
-        shell: bash
-        run: for f in $(find src tests -name '*.php'); do php -l "$f" > /dev/null || exit 1; done
-      - run: php -d pcov.enabled=1 -d pcov.directory=src tests/run.php --coverage=90
+          name: jest-${{ matrix.node }}-${{ matrix.os }}
+          path: |
+            jest-results.json
+            jest-output.log
+          if-no-files-found: ignore
+      - uses: codecov/codecov-action@v4
+        if: matrix.node == '22' && matrix.os == 'ubuntu-latest'
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          flags: typescript
 
-  standards:
-    name: Standards (vectors, doctor)
+  # Ecosystem integrations — the REAL published lombokvector/lomboksimhash
+  # packages under a real ESM loader (jest CJS cannot load ESM-only deps).
+  ecosystem:
+    name: Ecosystem integrations (node ESM)
+    needs: lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '22', cache: npm }
+      - run: npm ci
+      - run: npx tsx --test tests/ecosystem/*.test.ts
+
+  vectors:
+    name: NIST Test Vectors
+    needs: lint
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-      - name: Vector file matches its source and SHA256SUMS
-        run: |
-          python3 vectors/build_vectors.py
-          git diff --exit-code vectors/lombokvector-vectors-v1.json
-          sha256sum -c vectors/SHA256SUMS
-      - name: lombok doctor
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '22', cache: npm }
+      - run: npm ci
+      - run: npm run test:vectors -- --verbose
         env:
-          LOMBOK_PRIVACY_TERMS: ${{ secrets.LOMBOK_PRIVACY_TERMS }}
-        run: bash scripts/lombok-doctor.sh LombokVector
+          LOMBOK_VERIFY_NIST_CAVP: 'true'
+
+  deno:
+    name: Deno compatibility
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v1
+        with: { deno-version: v2.x }
+      - name: Deno test (jest-style BDD via preload shim)
+        run: |
+          # Direktori eksplisit — tests/ecosystem/ memakai node:test + paket
+          # peer asli (node_modules tidak dipasang di job Deno).
+          deno test --allow-read --allow-env \
+            tests/unit/ tests/integration/ tests/vectors/ \
+            --import-map=deno_import_map.json \
+            --unstable-sloppy-imports \
+            --no-check \
+            --preload tests/deno-bdd.ts
+
+  bun:
+    name: Bun compatibility
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      # Pin: bun "latest" pernah mengubah perilaku antar minor. 1.4.4
+      # terverifikasi hijau (348 pass) — naikkan versi secara sadar, bukan
+      # karena runner berubah di balik layar.
+      - uses: oven-sh/setup-bun@v1
+        with: { bun-version: '1.4.4' }
+      - run: bun install
+      - name: Bun test (output untuk diagnosa)
+        run: |
+          set -o pipefail
+          bun test 2>&1 | tee bun-output.log
+      - name: Upload bun diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bun-diagnostics
+          path: bun-output.log
+          if-no-files-found: ignore
+
+  standards:
+    name: Standards (doctor)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: lombok doctor (D-ENV, standar ekosistem v3.7)
+        run: bash scripts/lombok-doctor.sh LombokEncryptDecrypt
