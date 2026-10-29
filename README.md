@@ -4,6 +4,9 @@
 
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 [![CI](https://github.com/codinglombok/LombokVector/actions/workflows/ci.yml/badge.svg)](https://github.com/codinglombok/LombokVector/actions/workflows/ci.yml)
+[![crates.io](https://img.shields.io/crates/v/lombokvector.svg)](https://crates.io/crates/lombokvector)
+[![npm](https://img.shields.io/npm/v/lombokvector.svg)](https://www.npmjs.com/package/lombokvector)
+[![PyPI](https://img.shields.io/pypi/v/lombokvector.svg)](https://pypi.org/project/lombokvector/)
 [![Vectors](https://img.shields.io/badge/shared%20vectors-223%20bit--exact-success)](vectors/)
 [![Lombok Ecosystem](https://img.shields.io/badge/Lombok-Ecosystem-2e7d5b?logo=github)](https://github.com/codinglombok)
 
@@ -20,16 +23,18 @@ Part of the [Lombok Ecosystem](https://github.com/codinglombok).
 
 | Language | Package | Status |
 |---|---|---|
-| Rust | `lombokvector` (crates.io) | not yet published |
-| TypeScript / JavaScript | `lombokvector` (npm) | not yet published |
-| Python | `lombokvector` (PyPI) | not yet published |
-| Go | `github.com/codinglombok/lombokvector/go` | tag `go/v0.1.0` on release |
-| PHP | `codinglombok/lombokvector` (Packagist) | needs a split repository first |
+| Rust | `lombokvector` (crates.io) | published — `v0.1.0` |
+| TypeScript / JavaScript | `lombokvector` (npm) | published — `v0.1.0` |
+| Python | `lombokvector` (PyPI) | published — `v0.1.0` |
+| Go | `github.com/codinglombok/lombokvector/go` | tagged — `go/v0.1.0` |
+| PHP | `codinglombok/lombokvector` (Packagist) | published — `v0.1.0` |
 | C | `c-headers/lombokvector.h` + library built from `rust/` | build from source |
 
 ## Quick start
 
 ### Rust
+
+Install: `cargo add lombokvector` (crates.io).
 
 ```rust
 use lombokvector::{batch_cosine, cosine_similarity, dot_product, normalize};
@@ -44,6 +49,8 @@ println!("backend: {}", lombokvector::active_backend());   // "avx2", "neon", "w
 
 ### TypeScript
 
+Install: `npm install lombokvector` (npm).
+
 ```ts
 import { cosineSimilarity, batchCosine, VectorError } from 'lombokvector';
 
@@ -54,6 +61,8 @@ try { cosineSimilarity([0, 0], [1, 1]); } catch (e) { (e as VectorError).code; }
 
 ### Python
 
+Install: `pip install lombokvector` (PyPI).
+
 ```python
 from lombokvector import cosine_similarity, batch_l2, normalize
 
@@ -62,6 +71,8 @@ batch_l2([0, 0], [[3, 4], [1, 0]])       # [ScoredIndex(index=1, score=1.0), Sco
 ```
 
 ### Go
+
+Install: `go get github.com/codinglombok/lombokvector/go@v0.1.0`.
 
 ```go
 import lombokvector "github.com/codinglombok/lombokvector/go"
@@ -72,6 +83,8 @@ if errors.Is(err, lombokvector.ErrZeroMagnitude) { /* ... */ }
 ```
 
 ### PHP
+
+Install: `composer require codinglombok/lombokvector` (Packagist).
 
 ```php
 use CodingLombok\LombokVector\LombokVector;

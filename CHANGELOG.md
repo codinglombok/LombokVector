@@ -20,6 +20,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- README badges, the installation table, and the quick starts now reflect
+  reality: every language port is published at `v0.1.0` (crates.io, npm,
+  PyPI, Packagist) and the Go module is tagged `go/v0.1.0`, each with its
+  one-line install command.
+- The `docker` job in `release.yml` declares its deployment environment
+  (`docker`), completing rule R1 of ecosystem standard v3.7: one canonical
+  environment per registry-publish job (`crates`, `npm`, `pypi`, `docker`,
+  `github-release`).
 - `lombok-doctor.sh` now fails when `php/composer.json` exists (the manifest
   moved to the root) or when any `docs/*_LombokVector_v<other>.md` copy is
   committed, so a staging-flow relapse of stale versioned documents fails CI
@@ -27,6 +35,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `go/LICENSE` (Apache-2.0) in the Go module directory, so pkg.go.dev shows
+  the license for `github.com/codinglombok/lombokvector/go` (tech-debt item
+  TD-03).
 - Container release channel: root `Dockerfile` (multi-stage; builds the C FFI
   shared library with `--features ffi` and ships it in `debian:bookworm-slim`
   with `lombokvector.h` and a self-verifying smoke test as the entrypoint),
