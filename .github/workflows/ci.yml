@@ -36,10 +36,10 @@ jobs:
         with:
           workspaces: rust
       - run: cargo fmt --check
-      - run: cargo clippy --all-targets --features ffi -- -D warnings
-      - run: cargo test --features ffi
+      - run: cargo clippy --locked --all-targets --features ffi -- -D warnings
+      - run: cargo test --locked --features ffi
       - name: Scalar kernels give the same bits
-        run: cargo test --features portable --test vectors
+        run: cargo test --locked --features portable --test vectors
 
   rust-targets:
     name: Rust targets (no_std, aarch64, wasm, MSRV)
@@ -54,24 +54,24 @@ jobs:
           toolchain: stable
           targets: thumbv7em-none-eabihf, aarch64-unknown-linux-gnu, wasm32-unknown-unknown
       - name: no_std without allocator (embedded)
-        run: cargo check --no-default-features --target thumbv7em-none-eabihf
+        run: cargo check --locked --no-default-features --target thumbv7em-none-eabihf
       - name: no_std with alloc
-        run: cargo check --no-default-features --features alloc --target thumbv7em-none-eabihf
+        run: cargo check --locked --no-default-features --features alloc --target thumbv7em-none-eabihf
       - name: aarch64 (NEON)
-        run: cargo check --target aarch64-unknown-linux-gnu
+        run: cargo check --locked --target aarch64-unknown-linux-gnu
       - name: wasm32 with simd128
         env:
           RUSTFLAGS: -C target-feature=+simd128
-        run: cargo check --no-default-features --features alloc --target wasm32-unknown-unknown
+        run: cargo check --locked --no-default-features --features alloc --target wasm32-unknown-unknown
       - name: no_std build (software sqrt, static AVX2) passes the vectors
         env:
           RUSTFLAGS: -C target-feature=+avx2
-        run: cargo test --no-default-features --features alloc --test vectors --test simd_matches_reference
+        run: cargo test --locked --no-default-features --features alloc --test vectors --test simd_matches_reference
       - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master
         with:
           toolchain: "1.70"
       - name: MSRV 1.70
-        run: cargo +1.70 check --lib --features ffi
+        run: cargo +1.70 check --locked --lib --features ffi
 
   rust-coverage:
     name: Rust coverage
@@ -98,7 +98,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master
         with:
           toolchain: stable
-      - run: cargo rustc --release --features ffi --crate-type cdylib
+      - run: cargo rustc --locked --release --features ffi --crate-type cdylib
         working-directory: rust
       - working-directory: c-headers/examples
         run: |
